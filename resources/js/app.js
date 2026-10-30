@@ -28,6 +28,9 @@
 
     const state = {
         lang: 'fr',
+        page: initialState.page || 'welcome',
+        activeCockpitTab: initialState.activeCockpitTab || 'overview',
+        ledgerFilter: 'ALL',
         tournaments: Array.isArray(initialState.tournaments) ? initialState.tournaments : [],
         currentUser: initialState.currentUser || null,
         wallet: initialState.wallet || null,
@@ -1135,25 +1138,27 @@
                     .join('');
 
                 let primaryBtnHtml = '';
+                const detailUrl = `/tournaments/${encodeURIComponent(t.slug)}`;
+
                 if (t.status === 'OPEN') {
                     if (isRegistered) {
                         primaryBtnHtml = `
-                            <button type="button" data-open-detail="${t.id}" class="h-11 flex-1 min-w-0 px-2.5 sm:px-3.5 bg-[#10B981]/20 border border-[#10B981]/50 text-[#10B981] font-mono text-[11px] font-semibold uppercase tracking-normal sm:tracking-wider whitespace-nowrap truncate hover:bg-[#10B981]/30 transition">
+                            <a href="${detailUrl}" class="h-11 flex-1 min-w-0 px-2.5 sm:px-3.5 bg-[#10B981]/20 border border-[#10B981]/50 text-[#10B981] font-mono text-[11px] font-semibold uppercase tracking-normal sm:tracking-wider whitespace-nowrap truncate hover:bg-[#10B981]/30 inline-flex items-center justify-center transition">
                                 INSCRIT // SÉQUESTRE ✓
-                            </button>
+                            </a>
                         `;
                     } else {
                         primaryBtnHtml = `
-                            <button type="button" data-open-register="${t.id}" class="h-11 flex-1 min-w-0 px-2.5 sm:px-3.5 bg-[#D8E5F8] text-[#030407] font-mono text-[11px] font-bold uppercase tracking-normal sm:tracking-wider whitespace-nowrap truncate hover:bg-[#E5C158] transition">
+                            <button type="button" data-open-register="${t.id}" class="h-11 flex-1 min-w-0 px-2.5 sm:px-3.5 bg-[#D8E5F8] text-[#030407] font-mono text-[11px] font-bold uppercase tracking-normal sm:tracking-wider whitespace-nowrap truncate hover:bg-[#E5C158] transition cursor-pointer">
                                 S'inscrire (${formatCents(t.entry_fee_cents)}) ↗
                             </button>
                         `;
                     }
                 } else {
                     primaryBtnHtml = `
-                        <button type="button" data-open-detail="${t.id}" class="h-11 flex-1 min-w-0 px-2.5 sm:px-3.5 bg-[#121824] border border-white/15 text-[#F4F7FB] font-mono text-[11px] font-semibold uppercase tracking-normal sm:tracking-wider whitespace-nowrap truncate hover:border-[#E5C158] transition">
+                        <a href="${detailUrl}" class="h-11 flex-1 min-w-0 px-2.5 sm:px-3.5 bg-[#121824] border border-white/15 text-[#F4F7FB] font-mono text-[11px] font-semibold uppercase tracking-normal sm:tracking-wider whitespace-nowrap truncate hover:border-[#E5C158] inline-flex items-center justify-center transition">
                             Voir Grand Livre ↗
-                        </button>
+                        </a>
                     `;
                 }
 
@@ -1170,7 +1175,9 @@
                             </div>
 
                             <!-- Title & Organizer -->
-                            <h3 class="font-display font-bold text-lg text-[#F4F7FB] tracking-tight mb-1 break-words">${escapeHtml(t.title)}</h3>
+                            <h3 class="font-display font-bold text-lg text-[#F4F7FB] tracking-tight mb-1 break-words">
+                                <a href="${detailUrl}" class="hover:text-[#E5C158] transition">${escapeHtml(t.title)}</a>
+                            </h3>
                             <p class="text-xs font-mono text-[#64748B] mb-4 tabular-nums">
                                 ORG // <span class="text-[#94A3B8]">${escapeHtml(t.organizer ? t.organizer.gamertag : 'VKR_ARBITER')}</span>
                                 ${canManage ? '<span class="ml-2 text-[#E5C158]">[PROPRIÉTAIRE // ARBITRE]</span>' : ''}
@@ -1206,9 +1213,9 @@
                         <!-- Bottom Aligned Action Row -->
                         <div class="mt-auto pt-4 border-t border-white/[0.08] flex items-center gap-2 sm:gap-3 min-w-0">
                             ${primaryBtnHtml}
-                            <button type="button" data-open-detail="${t.id}" class="h-11 shrink-0 px-2.5 sm:px-3.5 bg-[#080B11] border border-white/15 text-[#94A3B8] hover:text-[#F4F7FB] hover:border-[#D8E5F8] font-mono text-[11px] font-semibold uppercase tracking-normal sm:tracking-wider whitespace-nowrap transition">
-                                Arbitrage ⤢
-                            </button>
+                            <a href="${detailUrl}" class="h-11 shrink-0 px-2.5 sm:px-3.5 bg-[#080B11] border border-white/15 text-[#94A3B8] hover:text-[#F4F7FB] hover:border-[#D8E5F8] font-mono text-[11px] font-semibold uppercase tracking-normal sm:tracking-wider whitespace-nowrap inline-flex items-center justify-center transition">
+                                Explorer l'Arène ↗
+                            </a>
                         </div>
                     </article>
                 `;
@@ -1514,90 +1521,101 @@
             if (el) el.textContent = text;
         };
 
-        // Header Auth Status
+        // 1. Header Guest vs Auth Controls (Welcome Page & Global)
+        const guestActions = document.getElementById('header-guest-actions');
+        const authActions = document.getElementById('header-auth-actions');
         const headerOperatorBadge = document.getElementById('header-operator-badge');
-        if (headerOperatorBadge) {
+
+        if (guestActions && authActions) {
             if (state.currentUser) {
-                headerOperatorBadge.textContent = `${state.currentUser.gamertag} [${state.currentUser.role}]`;
-                headerOperatorBadge.classList.remove('hidden');
+                guestActions.classList.add('hidden');
+                guestActions.classList.remove('flex');
+                authActions.classList.remove('hidden');
+                authActions.classList.add('flex');
             } else {
-                headerOperatorBadge.classList.add('hidden');
+                authActions.classList.add('hidden');
+                authActions.classList.remove('flex');
+                guestActions.classList.remove('hidden');
+                guestActions.classList.add('flex');
             }
         }
 
-        // Cockpit KPI Cards
+        if (headerOperatorBadge && state.currentUser) {
+            const balText = state.wallet ? ` · ${formatCents(state.wallet.balance_cents)}` : '';
+            headerOperatorBadge.textContent = `${state.currentUser.gamertag} [${state.currentUser.role}]${balText}`;
+        }
+
+        // 2. Dashboard Topbar & KPI Cards
         if (state.currentUser && state.wallet) {
-            setEl('cockpit-operator-title', `${state.currentUser.gamertag} // [${state.currentUser.role}]`);
+            setEl('cockpit-operator-title', state.currentUser.gamertag);
             setEl('cockpit-operator-email', state.currentUser.email);
+            setEl('topbar-balance-cents', formatCents(state.wallet.balance_cents));
+            setEl('topbar-escrow-cents', formatCents(state.wallet.locked_escrow_cents));
             setEl('kpi-balance-cents', formatCents(state.wallet.balance_cents));
             setEl('kpi-locked-escrow-cents', formatCents(state.wallet.locked_escrow_cents));
             setEl('kpi-lifetime-won-cents', formatCents(state.wallet.lifetime_won_cents));
             setEl('kpi-elo-rating', `${state.currentUser.elo_rating} MMR`);
-            setEl('kpi-preferred-class', `LOADOUT ACTIF // ${state.currentUser.preferred_class}`);
-        } else {
-            setEl('cockpit-operator-title', 'MODE APERÇU PUBLIC // NON CONNECTÉ');
-            setEl(
-                'cockpit-operator-email',
-                'Sélectionnez un profil Démo en 1 clic ci-dessus pour activer les transactions'
-            );
-            setEl(
-                'kpi-balance-cents',
-                formatCents(state.platformStats.total_escrow_locked_cents || 155000)
-            );
-            setEl(
-                'kpi-locked-escrow-cents',
-                formatCents(state.platformStats.total_escrow_locked_cents || 155000)
-            );
-            setEl(
-                'kpi-lifetime-won-cents',
-                formatCents(state.platformStats.total_prizes_distributed_cents || 36800)
-            );
-            setEl('kpi-elo-rating', '2 365 MMR');
-            setEl('kpi-preferred-class', `LOADOUT PRÉ-SÉLECTIONNÉ // ${state.activeClass}`);
+            setEl('kpi-preferred-class', `LOADOUT // ${state.currentUser.preferred_class}`);
+            setEl('overview-active-class-badge', `CLASSE ACTIVE : ${state.currentUser.preferred_class}`);
         }
 
-        // Render Immutable Double-Entry Ledger Table
+        if (Array.isArray(state.ledgerEntries)) {
+            setEl('sidebar-ledger-count', String(state.ledgerEntries.length));
+        }
+
+        // 3. Render Immutable Double-Entry Ledger Table (with instant type filter)
         const tbody = document.getElementById('ledger-entries-tbody');
         if (tbody) {
-            if (!state.ledgerEntries || state.ledgerEntries.length === 0) {
+            const allEntries = Array.isArray(state.ledgerEntries) ? state.ledgerEntries : [];
+            const filteredEntries =
+                state.ledgerFilter === 'ALL'
+                    ? allEntries
+                    : allEntries.filter((e) => e.entry_type === state.ledgerFilter);
+
+            if (filteredEntries.length === 0) {
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="7" class="px-4 py-8 text-center text-xs font-mono text-[#64748B]">
-                            Aucune écriture comptable enregistrée pour ce portefeuille.
+                        <td colspan="8" class="px-4 py-8 text-center text-xs font-mono text-[#64748B]">
+                            Aucune écriture comptable enregistrée pour ce filtre (${escapeHtml(state.ledgerFilter)}).
                         </td>
                     </tr>
                 `;
             } else {
-                tbody.innerHTML = state.ledgerEntries
+                tbody.innerHTML = filteredEntries
                     .map((entry) => {
                         const isCredit = Number(entry.credit_cents) > 0;
                         const typeBadgeCls = isCredit
                             ? 'bg-[#10B981]/15 text-[#10B981] border-[#10B981]/30'
-                            : 'bg-[#F59E0B]/15 text-[#F59E0B] border-[#F59E0B]/30';
+                            : entry.entry_type === 'WITHDRAWAL'
+                              ? 'bg-[#E5C158]/15 text-[#E5C158] border-[#E5C158]/30'
+                              : 'bg-[#F59E0B]/15 text-[#F59E0B] border-[#F59E0B]/30';
                         const debitStr =
                             Number(entry.debit_cents) > 0
-                                ? `<span class="text-[#EF4444]">-${formatCents(entry.debit_cents)}</span>`
-                                : '<span class="text-[#64748B]">0,00 €</span>';
+                                ? `<span class="text-[#EF4444] whitespace-nowrap tabular-nums">-${formatCents(entry.debit_cents)}</span>`
+                                : '<span class="text-[#64748B] whitespace-nowrap tabular-nums">0,00 €</span>';
                         const creditStr =
                             Number(entry.credit_cents) > 0
-                                ? `<span class="text-[#10B981]">+${formatCents(entry.credit_cents)}</span>`
-                                : '<span class="text-[#64748B]">0,00 €</span>';
+                                ? `<span class="text-[#10B981] whitespace-nowrap tabular-nums">+${formatCents(entry.credit_cents)}</span>`
+                                : '<span class="text-[#64748B] whitespace-nowrap tabular-nums">0,00 €</span>';
 
                         return `
-                            <tr class="border-b border-white/[0.05] hover:bg-[#121824]/60 transition">
-                                <td class="px-4 py-3 text-xs font-mono text-[#94A3B8] tabular-nums">#${String(entry.id).padStart(4, '0')}</td>
-                                <td class="px-4 py-3">
-                                    <span class="px-2 py-0.5 text-[10px] font-mono font-semibold border ${typeBadgeCls}">${escapeHtml(entry.entry_type)}</span>
+                            <tr class="border-b border-white/[0.05] hover:bg-[#121824]/60 transition whitespace-nowrap tabular-nums">
+                                <td class="px-3.5 py-3 text-xs font-mono text-[#94A3B8] whitespace-nowrap tabular-nums">#${String(entry.id).padStart(4, '0')}</td>
+                                <td class="px-3.5 py-3 whitespace-nowrap tabular-nums">
+                                    <span class="px-2 py-0.5 text-[10px] font-mono font-semibold border whitespace-nowrap tabular-nums ${typeBadgeCls}">${escapeHtml(entry.entry_type)}</span>
                                 </td>
-                                <td class="px-4 py-3 text-xs text-[#F4F7FB] max-w-xs truncate" title="${escapeHtml(entry.description)}">
+                                <td class="px-3.5 py-3 text-xs text-[#F4F7FB] whitespace-nowrap tabular-nums max-w-xs truncate" title="${escapeHtml(entry.description)}">
                                     ${escapeHtml(entry.description)}
                                 </td>
-                                <td class="px-4 py-3 text-xs font-mono text-right tabular-nums">${debitStr}</td>
-                                <td class="px-4 py-3 text-xs font-mono text-right tabular-nums">${creditStr}</td>
-                                <td class="px-4 py-3 text-xs font-mono text-right text-[#D8E5F8] font-semibold tabular-nums">
+                                <td class="px-3.5 py-3 text-xs font-mono text-right text-[#94A3B8] whitespace-nowrap tabular-nums">
+                                    ${formatCents(entry.balance_before_cents)}
+                                </td>
+                                <td class="px-3.5 py-3 text-xs font-mono text-right whitespace-nowrap tabular-nums">${debitStr}</td>
+                                <td class="px-3.5 py-3 text-xs font-mono text-right whitespace-nowrap tabular-nums">${creditStr}</td>
+                                <td class="px-3.5 py-3 text-xs font-mono text-right text-[#D8E5F8] font-semibold whitespace-nowrap tabular-nums">
                                     ${formatCents(entry.balance_after_cents)}
                                 </td>
-                                <td class="px-4 py-3 text-[11px] font-mono text-[#64748B] tabular-nums truncate max-w-[180px]" title="${escapeHtml(entry.idempotency_key)}">
+                                <td class="px-3.5 py-3 text-[11px] font-mono text-[#64748B] whitespace-nowrap tabular-nums truncate max-w-[180px]" title="${escapeHtml(entry.idempotency_key)}">
                                     ${escapeHtml(entry.idempotency_key)}
                                 </td>
                             </tr>
@@ -1611,9 +1629,42 @@
         document.querySelectorAll('[data-demo-email]').forEach((btn) => {
             const email = btn.getAttribute('data-demo-email');
             const isCurrent = state.currentUser && state.currentUser.email === email;
-            btn.classList.toggle('border-[#E5C158]', isCurrent);
-            btn.classList.toggle('bg-[#121824]', isCurrent);
+            btn.classList.toggle('border-[#E5C158]', Boolean(isCurrent));
         });
+    }
+
+    function switchCockpitTab(tabKey) {
+        const validTabs = ['overview', 'arenas', 'ledger', 'organizer'];
+        const targetTab = validTabs.includes(tabKey) ? tabKey : 'overview';
+        state.activeCockpitTab = targetTab;
+
+        document.querySelectorAll('[data-cockpit-tab]').forEach((btn) => {
+            const key = btn.getAttribute('data-cockpit-tab');
+            const isActive = key === targetTab;
+            btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+            if (isActive) {
+                btn.classList.add('border-[#E5C158]', 'bg-[#121824]', 'text-[#F4F7FB]', 'font-semibold');
+                btn.classList.remove('border-transparent', 'text-[#94A3B8]');
+            } else {
+                btn.classList.remove('border-[#E5C158]', 'bg-[#121824]', 'text-[#F4F7FB]', 'font-semibold');
+                btn.classList.add('border-transparent', 'text-[#94A3B8]');
+            }
+        });
+
+        document.querySelectorAll('[data-cockpit-panel]').forEach((panel) => {
+            const key = panel.getAttribute('data-cockpit-panel');
+            if (key === targetTab) {
+                panel.classList.remove('hidden');
+            } else {
+                panel.classList.add('hidden');
+            }
+        });
+
+        if (window.history && window.history.replaceState && window.location.pathname === '/dashboard') {
+            const url = new URL(window.location.href);
+            url.searchParams.set('tab', targetTab);
+            window.history.replaceState({}, '', url.toString());
+        }
     }
 
     function renderBracket(tournamentId) {
@@ -1755,16 +1806,16 @@
                 const escrowCents = u.wallet ? Number(u.wallet.locked_escrow_cents) : 0;
                 const isTop3 = idx < 3;
                 return `
-                    <tr class="border-b border-white/[0.06] hover:bg-[#121824]/60 transition">
-                        <td class="px-4 py-3.5 font-mono text-xs font-bold tabular-nums ${isTop3 ? 'text-[#E5C158]' : 'text-[#64748B]'}">#${rank}</td>
-                        <td class="px-4 py-3.5 font-mono text-sm font-bold text-[#F4F7FB]">${escapeHtml(u.gamertag)}</td>
-                        <td class="px-4 py-3.5">
-                            <span class="px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider bg-[#121824] border border-white/10 text-[#D8E5F8]">${escapeHtml(u.role)}</span>
+                    <tr class="border-b border-white/[0.06] hover:bg-[#121824]/60 transition whitespace-nowrap tabular-nums">
+                        <td class="px-4 py-3.5 font-mono text-xs font-bold whitespace-nowrap tabular-nums ${isTop3 ? 'text-[#E5C158]' : 'text-[#64748B]'}">#${rank}</td>
+                        <td class="px-4 py-3.5 font-mono text-sm font-bold text-[#F4F7FB] whitespace-nowrap tabular-nums">${escapeHtml(u.gamertag)}</td>
+                        <td class="px-4 py-3.5 whitespace-nowrap tabular-nums">
+                            <span class="px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider bg-[#121824] border border-white/10 text-[#D8E5F8] whitespace-nowrap tabular-nums">${escapeHtml(u.role)}</span>
                         </td>
-                        <td class="px-4 py-3.5 font-mono text-xs text-[#94A3B8]">${escapeHtml(u.preferred_class)}</td>
-                        <td class="px-4 py-3.5 font-mono text-sm font-bold text-right text-[#D8E5F8] tabular-nums">${u.elo_rating} MMR</td>
-                        <td class="px-4 py-3.5 font-mono text-sm font-bold text-right text-[#10B981] tabular-nums">${formatCents(wonCents)}</td>
-                        <td class="px-4 py-3.5 font-mono text-xs text-right text-[#E5C158] tabular-nums">${formatCents(escrowCents)}</td>
+                        <td class="px-4 py-3.5 font-mono text-xs text-[#94A3B8] whitespace-nowrap tabular-nums">${escapeHtml(u.preferred_class)}</td>
+                        <td class="px-4 py-3.5 font-mono text-sm font-bold text-right text-[#D8E5F8] whitespace-nowrap tabular-nums">${u.elo_rating} MMR</td>
+                        <td class="px-4 py-3.5 font-mono text-sm font-bold text-right text-[#10B981] whitespace-nowrap tabular-nums">${formatCents(wonCents)}</td>
+                        <td class="px-4 py-3.5 font-mono text-xs text-right text-[#E5C158] whitespace-nowrap tabular-nums">${formatCents(escrowCents)}</td>
                     </tr>
                 `;
             })
@@ -1813,39 +1864,58 @@
             });
         });
 
-        // 3. 1-Click Demo Login Switcher
+        // 3. 1-Click Demo Login Switcher (Buttons & Select)
+        async function executeDemoLogin(email, redirectUrl) {
+            if (!email) return;
+            try {
+                const res = await fetch('/api/auth/demo-login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Accept: 'application/json',
+                    },
+                    body: JSON.stringify({ email }),
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    if (redirectUrl) {
+                        window.location.href = redirectUrl;
+                        return;
+                    }
+                    await refreshServerState();
+                    showToast(
+                        data.message || `Profil actif : ${email}`,
+                        'success',
+                        `SOLDE: ${state.wallet ? formatCents(state.wallet.balance_cents) : ''}`
+                    );
+                } else {
+                    showToast(data.message || 'Erreur lors de la bascule démo.', 'error');
+                }
+            } catch (err) {
+                showToast('Erreur réseau.', 'error');
+            }
+        }
+
         document.querySelectorAll('[data-demo-email]').forEach((btn) => {
             btn.addEventListener('click', async () => {
                 const email = btn.getAttribute('data-demo-email');
-                if (!email) return;
+                const redirectUrl = btn.getAttribute('data-demo-redirect');
                 btn.disabled = true;
                 try {
-                    const res = await fetch('/api/auth/demo-login', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            Accept: 'application/json',
-                        },
-                        body: JSON.stringify({ email }),
-                    });
-                    const data = await res.json();
-                    if (res.ok) {
-                        await refreshServerState();
-                        showToast(
-                            data.message || `Profil actif : ${email}`,
-                            'success',
-                            `SOLDE: ${state.wallet ? formatCents(state.wallet.balance_cents) : ''}`
-                        );
-                    } else {
-                        showToast(data.message || 'Erreur lors de la bascule démo.', 'error');
-                    }
-                } catch (err) {
-                    showToast('Erreur réseau.', 'error');
+                    await executeDemoLogin(email, redirectUrl);
                 } finally {
                     btn.disabled = false;
                 }
             });
         });
+
+        const demoSwitcherSelect = document.getElementById('dashboard-demo-switcher');
+        if (demoSwitcherSelect) {
+            demoSwitcherSelect.addEventListener('change', async () => {
+                const email = demoSwitcherSelect.value;
+                await executeDemoLogin(email, `/dashboard?tab=${encodeURIComponent(state.activeCockpitTab || 'overview')}`);
+            });
+        }
 
         // 4. Login Form Submission
         const loginForm = document.getElementById('form-auth-login');
@@ -1855,6 +1925,7 @@
                 const submitBtn = loginForm.querySelector('button[type="submit"]');
                 if (submitBtn) submitBtn.disabled = true;
                 const formData = new FormData(loginForm);
+                const redirectTarget = loginForm.getAttribute('data-auth-redirect');
                 try {
                     const res = await fetch('/api/auth/login', {
                         method: 'POST',
@@ -1869,6 +1940,10 @@
                     });
                     const data = await res.json();
                     if (res.ok) {
+                        if (redirectTarget || data.redirect) {
+                            window.location.href = redirectTarget || data.redirect || '/dashboard';
+                            return;
+                        }
                         await refreshServerState();
                         showToast(data.message || 'Session tactique ouverte.', 'success');
                     } else {
@@ -1890,6 +1965,7 @@
                 const submitBtn = registerForm.querySelector('button[type="submit"]');
                 if (submitBtn) submitBtn.disabled = true;
                 const formData = new FormData(registerForm);
+                const redirectTarget = registerForm.getAttribute('data-auth-redirect');
                 try {
                     const res = await fetch('/api/auth/register', {
                         method: 'POST',
@@ -1901,6 +1977,7 @@
                             name: formData.get('name'),
                             gamertag: formData.get('gamertag'),
                             email: formData.get('email'),
+                            account_type: formData.get('account_type') || 'PLAYER',
                             password: formData.get('password'),
                             password_confirmation: formData.get('password_confirmation'),
                             preferred_class: formData.get('preferred_class'),
@@ -1908,6 +1985,10 @@
                     });
                     const data = await res.json();
                     if (res.ok) {
+                        if (redirectTarget || data.redirect) {
+                            window.location.href = redirectTarget || data.redirect || '/dashboard';
+                            return;
+                        }
                         await refreshServerState();
                         showToast(data.message || 'Opérateur créé et portefeuille initialisé.', 'success');
                     } else {
@@ -1925,11 +2006,16 @@
         document.querySelectorAll('[data-logout-btn]').forEach((btn) => {
             btn.addEventListener('click', async () => {
                 btn.disabled = true;
+                const redirectUrl = btn.getAttribute('data-logout-redirect');
                 try {
                     await fetch('/api/auth/logout', {
                         method: 'POST',
                         headers: { Accept: 'application/json' },
                     });
+                    if (redirectUrl || window.location.pathname.startsWith('/dashboard')) {
+                        window.location.href = redirectUrl || '/';
+                        return;
+                    }
                     await refreshServerState();
                     showToast('Session opérateur déconnectée.', 'warning');
                 } finally {
@@ -1938,7 +2024,7 @@
             });
         });
 
-        // 7. Deposit Preset Buttons & Deposit Form (/api/wallets/deposit)
+        // 7A. Deposit Preset Buttons & Deposit Form (/api/wallets/deposit)
         document.querySelectorAll('[data-deposit-preset]').forEach((btn) => {
             btn.addEventListener('click', () => {
                 const cents = Number(btn.getAttribute('data-deposit-preset'));
@@ -1975,6 +2061,8 @@
                     });
                     const data = await res.json();
                     if (res.ok) {
+                        const keyInput = document.getElementById('deposit-idempotency-key');
+                        if (keyInput) keyInput.value = generateIdempotencyKey('dep');
                         await refreshServerState();
                         closeModal('modal-deposit');
                         showToast(
@@ -1995,6 +2083,104 @@
                 }
             });
         }
+
+        // 7B. SEPA Bank Withdrawal Preset Buttons & Form (/api/wallets/withdraw)
+        document.querySelectorAll('[data-withdraw-preset]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const cents = Number(btn.getAttribute('data-withdraw-preset'));
+                const input = document.getElementById('withdraw-amount-cents');
+                if (input && cents) {
+                    input.value = String(cents);
+                }
+            });
+        });
+
+        const withdrawForm = document.getElementById('form-wallet-withdraw');
+        if (withdrawForm) {
+            withdrawForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const submitBtn = withdrawForm.querySelector('button[type="submit"]');
+                if (submitBtn) submitBtn.disabled = true;
+                const formData = new FormData(withdrawForm);
+                const amountCents = Math.trunc(Number(formData.get('amount_cents')));
+                const iban = String(formData.get('iban') || '').trim();
+                const idempotencyKey =
+                    String(formData.get('idempotency_key') || '').trim() ||
+                    generateIdempotencyKey('wd');
+
+                try {
+                    const res = await fetch('/api/wallets/withdraw', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            Accept: 'application/json',
+                        },
+                        body: JSON.stringify({
+                            amount_cents: amountCents,
+                            iban: iban,
+                            idempotency_key: idempotencyKey,
+                        }),
+                    });
+                    const data = await res.json();
+                    if (res.ok) {
+                        const keyInput = document.getElementById('withdraw-idempotency-key');
+                        if (keyInput) keyInput.value = generateIdempotencyKey('wd');
+                        await refreshServerState();
+                        showToast(
+                            data.message || 'Retrait SEPA exécuté et débité du grand livre.',
+                            'success',
+                            `VIREMENT: -${formatCents(amountCents)} // IBAN: ${iban}`
+                        );
+                    } else {
+                        showToast(
+                            data.message || 'Retrait SEPA refusé (solde disponible insuffisant ou IBAN invalide).',
+                            'error'
+                        );
+                    }
+                } catch (err) {
+                    showToast('Erreur réseau lors du retrait SEPA.', 'error');
+                } finally {
+                    if (submitBtn) submitBtn.disabled = false;
+                }
+            });
+        }
+
+        // 7C. Dashboard Quick Loadout Buttons (/api/profile/loadout)
+        document.querySelectorAll('[data-dashboard-loadout]').forEach((btn) => {
+            btn.addEventListener('click', async () => {
+                const clsName = btn.getAttribute('data-dashboard-loadout');
+                if (!clsName) return;
+                btn.disabled = true;
+                try {
+                    const res = await fetch('/api/profile/loadout', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            Accept: 'application/json',
+                        },
+                        body: JSON.stringify({ preferred_class: clsName }),
+                    });
+                    const data = await res.json();
+                    if (res.ok) {
+                        state.activeClass = clsName;
+                        if (state.currentUser) state.currentUser.preferred_class = clsName;
+                        document.querySelectorAll('[data-dashboard-loadout]').forEach((b) => {
+                            const active = b.getAttribute('data-dashboard-loadout') === clsName;
+                            b.classList.toggle('border-[#E5C158]', active);
+                            b.classList.toggle('bg-[#121824]', active);
+                            b.classList.toggle('text-[#F4F7FB]', active);
+                            b.classList.toggle('border-white/10', !active);
+                            b.classList.toggle('bg-[#0C1018]', !active);
+                            b.classList.toggle('text-[#94A3B8]', !active);
+                        });
+                        renderCockpitState();
+                        showToast(data.message || `Loadout mis à jour sur ${clsName}.`, 'success');
+                    }
+                } finally {
+                    btn.disabled = false;
+                }
+            });
+        });
 
         // 8. Create Tournament Form (/api/tournaments)
         const createTournamentForm = document.getElementById('form-create-tournament');
@@ -2029,6 +2215,11 @@
                             'success',
                             `ARÈNE: ${data.tournament ? data.tournament.title : ''}`
                         );
+                        if (window.location.pathname === '/dashboard') {
+                            setTimeout(() => {
+                                window.location.href = '/dashboard?tab=organizer';
+                            }, 500);
+                        }
                     } else {
                         showToast(
                             data.message ||
@@ -2051,6 +2242,7 @@
                 e.preventDefault();
                 const tId = registerTournamentForm.getAttribute('data-tournament-id');
                 if (!tId) return;
+                const reloadOnSuccess = registerTournamentForm.getAttribute('data-reload-on-success') === 'true';
                 const submitBtn = registerTournamentForm.querySelector('button[type="submit"]');
                 if (submitBtn) submitBtn.disabled = true;
                 const formData = new FormData(registerTournamentForm);
@@ -2072,16 +2264,20 @@
                     });
                     const data = await res.json();
                     if (res.ok) {
-                        await refreshServerState();
                         closeModal('modal-register-tournament');
                         showToast(
                             data.message || 'Buy-in verrouillé en séquestre atomique.',
                             'success',
                             `IDEMPOTENCY KEY: ${idempotencyKey}`
                         );
+                        if (reloadOnSuccess || window.location.pathname === '/dashboard') {
+                            setTimeout(() => window.location.reload(), 400);
+                            return;
+                        }
+                        await refreshServerState();
                     } else {
                         showToast(
-                            data.message || "Échec de l'inscription au tournoi.",
+                            data.message || "Échec de l'inscription au tournoi (Connectez-vous ou vérifiez votre solde).",
                             'error'
                         );
                     }
@@ -2100,6 +2296,7 @@
                 e.preventDefault();
                 const tId = settleForm.getAttribute('data-tournament-id');
                 if (!tId) return;
+                const reloadOnSuccess = settleForm.getAttribute('data-reload-on-success') === 'true';
                 const submitBtn = settleForm.querySelector('button[type="submit"]');
                 if (submitBtn) submitBtn.disabled = true;
                 const formData = new FormData(settleForm);
@@ -2124,13 +2321,17 @@
                     });
                     const data = await res.json();
                     if (res.ok) {
-                        await refreshServerState();
                         closeModal('modal-tournament-detail');
                         showToast(
                             data.message || 'Cashprize 60/30/10 distribué et commission 8% prélevée.',
                             'success',
                             `CLÉ DE RÈGLEMENT: ${idempotencyKey}`
                         );
+                        if (reloadOnSuccess || window.location.pathname === '/dashboard') {
+                            setTimeout(() => window.location.reload(), 450);
+                            return;
+                        }
+                        await refreshServerState();
                     } else {
                         showToast(
                             data.message || 'Clôture refusée (Vérifiez vos droits Organisateur/Admin ou les inscrits).',
@@ -2152,6 +2353,7 @@
                 e.preventDefault();
                 const tId = cancelForm.getAttribute('data-tournament-id');
                 if (!tId) return;
+                const reloadOnSuccess = cancelForm.getAttribute('data-reload-on-success') === 'true';
                 const submitBtn = cancelForm.querySelector('button[type="submit"]');
                 if (submitBtn) submitBtn.disabled = true;
                 const formData = new FormData(cancelForm);
@@ -2173,13 +2375,17 @@
                     });
                     const data = await res.json();
                     if (res.ok) {
-                        await refreshServerState();
                         closeModal('modal-tournament-detail');
                         showToast(
                             data.message || 'Tournoi annulé et 100% du séquestre remboursé.',
                             'warning',
                             `TOTAL REMBOURSÉ: ${formatCents(data.total_refunded_cents || 0)}`
                         );
+                        if (reloadOnSuccess || window.location.pathname === '/dashboard') {
+                            setTimeout(() => window.location.reload(), 450);
+                            return;
+                        }
+                        await refreshServerState();
                     } else {
                         showToast(data.message || "Refus de l'annulation.", 'error');
                     }
@@ -2191,25 +2397,49 @@
             });
         }
 
-        // 12. Cockpit Sidebar Active Indicator Switcher
-        document.querySelectorAll('[data-cockpit-nav]').forEach((btn) => {
+        // 12. True 4-Tab Cockpit Switcher on /dashboard (ZERO scrollIntoView!)
+        document.querySelectorAll('[data-cockpit-tab]').forEach((btn) => {
             btn.addEventListener('click', () => {
-                document.querySelectorAll('[data-cockpit-nav]').forEach((b) => {
-                    b.classList.remove('border-l-2', 'border-[#E5C158]', 'bg-[#121824]', 'text-[#F4F7FB]');
-                    b.classList.add('text-[#94A3B8]');
-                });
-                btn.classList.add('border-l-2', 'border-[#E5C158]', 'bg-[#121824]', 'text-[#F4F7FB]');
-                btn.classList.remove('text-[#94A3B8]');
-
-                const targetId = btn.getAttribute('data-cockpit-nav');
-                const targetEl = document.getElementById(targetId);
-                if (targetEl) {
-                    targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                const targetTab = btn.getAttribute('data-cockpit-tab');
+                if (targetTab) {
+                    switchCockpitTab(targetTab);
                 }
             });
         });
 
-        // 13. Bracket Tournament Selector Buttons
+        // 13. Ledger Instant Type Filter Buttons on /dashboard
+        document.querySelectorAll('[data-ledger-filter]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const f = btn.getAttribute('data-ledger-filter') || 'ALL';
+                state.ledgerFilter = f;
+                document.querySelectorAll('[data-ledger-filter]').forEach((b) => {
+                    const active = (b.getAttribute('data-ledger-filter') || 'ALL') === f;
+                    b.classList.toggle('border-[#E5C158]', active);
+                    b.classList.toggle('bg-[#121824]', active);
+                    b.classList.toggle('text-[#F4F7FB]', active);
+                    b.classList.toggle('font-bold', active);
+                    b.classList.toggle('border-white/10', !active);
+                    b.classList.toggle('bg-[#080B11]', !active);
+                    b.classList.toggle('text-[#94A3B8]', !active);
+                });
+                renderCockpitState();
+            });
+        });
+
+        // 14. Bind static [data-open-register] and [data-open-detail] buttons on /dashboard
+        document.querySelectorAll('[data-open-register]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                openRegisterTournamentModal(Number(btn.getAttribute('data-open-register')));
+            });
+        });
+
+        document.querySelectorAll('[data-open-detail]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                openTournamentDetailModal(Number(btn.getAttribute('data-open-detail')));
+            });
+        });
+
+        // 15. Bracket Tournament Selector Buttons
         document.querySelectorAll('[data-bracket-select]').forEach((btn) => {
             btn.addEventListener('click', () => {
                 renderBracket(Number(btn.getAttribute('data-bracket-select')));

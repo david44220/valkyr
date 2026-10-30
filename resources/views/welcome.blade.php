@@ -50,7 +50,7 @@
     <header id="main-header" class="fixed top-0 inset-x-0 z-50 border-b border-white/[0.08] transition-colors duration-300" style="background-color: rgba(0, 0, 0, 0);">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between gap-4">
             <!-- Left: Crisp Brand Logo + Emblem on a Single Clean Line (Zero Sub-Slogans) -->
-            <a href="#hero-section" class="font-display font-extrabold text-lg sm:text-xl tracking-tight text-[#F4F7FB] flex items-center gap-2.5 whitespace-nowrap">
+            <a href="/" class="font-display font-extrabold text-lg sm:text-xl tracking-tight text-[#F4F7FB] flex items-center gap-2.5 whitespace-nowrap">
                 <span class="text-[#E5C158]" aria-hidden="true">✦</span>
                 <span>VALKYR</span>
             </a>
@@ -63,25 +63,37 @@
                 <a href="#leaderboard-section" data-i18n="nav.leaderboard" class="text-sm font-medium text-[#94A3B8] hover:text-[#F4F7FB] transition whitespace-nowrap">Classement</a>
             </nav>
 
-            <!-- Right: Minimalist Language Toggle (FR / EN), Discreet Sign-In Link & 1 Sharp Primary CTA -->
-            <div class="hidden sm:flex items-center gap-4">
+            <!-- Right: Minimalist Language Toggle (FR / EN) + Dynamic Guest vs Auth Controls -->
+            <div class="hidden sm:flex items-center gap-3.5">
                 <div class="flex items-center gap-1.5 px-2.5 py-1.5 border border-white/[0.08] bg-[#080B11]/70 font-mono text-xs">
                     <button type="button" data-lang-btn="fr" class="px-1 text-[#E5C158] font-bold cursor-pointer">FR</button>
                     <span class="text-white/20">/</span>
                     <button type="button" data-lang-btn="en" class="px-1 text-[#64748B] hover:text-[#F4F7FB] cursor-pointer">EN</button>
                 </div>
 
-                <span id="header-operator-badge" class="{{ $currentUser ? '' : 'hidden' }} px-2.5 py-1 bg-[#121824] border border-[#E5C158]/40 text-[#E5C158] font-mono text-xs font-semibold whitespace-nowrap">
-                    {{ $currentUser ? $currentUser->gamertag . ' [' . $currentUser->role . ']' : '' }}
-                </span>
+                <!-- Guest Controls -->
+                <div id="header-guest-actions" class="{{ $currentUser ? 'hidden' : 'flex' }} items-center gap-3.5">
+                    <a href="/login" data-i18n="nav.login" class="h-11 px-3 inline-flex items-center justify-center text-xs font-mono uppercase tracking-wider text-[#94A3B8] hover:text-[#F4F7FB] whitespace-nowrap transition">
+                        Connexion
+                    </a>
+                    <a href="/register" class="h-11 px-5 bg-[#D8E5F8] text-[#030407] hover:bg-[#E5C158] font-mono text-xs font-bold uppercase tracking-wider rounded-none whitespace-nowrap inline-flex items-center justify-center transition">
+                        <span data-i18n="nav.register_cta">Ouvrir un Compte ↗</span>
+                    </a>
+                </div>
 
-                <a href="#cockpit-section" data-i18n="nav.login" class="text-xs font-mono uppercase tracking-wider text-[#94A3B8] hover:text-[#F4F7FB] px-2 py-2 whitespace-nowrap transition">
-                    Connexion
-                </a>
-
-                <button type="button" data-open-create-tournament class="h-11 px-5 bg-[#D8E5F8] text-[#030407] hover:bg-[#E5C158] font-mono text-xs font-bold uppercase tracking-wider rounded-none whitespace-nowrap transition cursor-pointer">
-                    <span data-i18n="nav.create_league">Créer une Ligue ↗</span>
-                </button>
+                <!-- Authenticated Controls -->
+                <div id="header-auth-actions" class="{{ $currentUser ? 'flex' : 'hidden' }} items-center gap-2.5">
+                    <a href="/dashboard" id="header-operator-badge" class="h-11 px-3 bg-[#121824] border border-[#E5C158]/40 text-[#E5C158] font-mono text-xs font-semibold whitespace-nowrap inline-flex items-center gap-2 tabular-nums hover:border-[#E5C158] transition">
+                        <span>{{ $currentUser ? $currentUser->gamertag . ' [' . $currentUser->role . ']' : '' }}</span>
+                        <span class="text-[#F4F7FB]">{{ $wallet ? '· ' . \App\Models\Wallet::formatCents($wallet->balance_cents) : '' }}</span>
+                    </a>
+                    <a href="/dashboard" class="h-11 px-4 bg-[#E5C158] text-[#030407] hover:bg-[#D8E5F8] font-mono text-xs font-bold uppercase tracking-wider rounded-none whitespace-nowrap inline-flex items-center justify-center transition">
+                        <span data-i18n="nav.cockpit">Mon Cockpit ↗</span>
+                    </a>
+                    <button type="button" data-logout-btn class="h-11 px-3.5 bg-[#080B11] border border-[#EF4444]/40 text-[#EF4444] hover:bg-[#EF4444] hover:text-[#030407] font-mono text-xs font-semibold uppercase tracking-wider rounded-none whitespace-nowrap transition cursor-pointer">
+                        Déconnexion
+                    </button>
+                </div>
             </div>
 
             <!-- Mobile Hamburger Button (48x48 Touch Target) -->
@@ -97,7 +109,11 @@
                 <a href="#live-replay-section" data-i18n="nav.replay" class="py-2 text-sm font-mono uppercase tracking-wider text-[#F4F7FB] border-b border-white/[0.06]">Live Replay</a>
                 <a href="#arsenal-section" data-i18n="nav.arsenal" class="py-2 text-sm font-mono uppercase tracking-wider text-[#F4F7FB] border-b border-white/[0.06]">Arsenal</a>
                 <a href="#leaderboard-section" data-i18n="nav.leaderboard" class="py-2 text-sm font-mono uppercase tracking-wider text-[#F4F7FB] border-b border-white/[0.06]">Classement</a>
-                <a href="#cockpit-section" data-i18n="nav.login" class="py-2 text-sm font-mono uppercase tracking-wider text-[#E5C158]">Connexion / Cockpit</a>
+                @if($currentUser)
+                    <a href="/dashboard" class="py-2 text-sm font-mono uppercase tracking-wider text-[#E5C158] border-b border-white/[0.06]">Mon Cockpit ({{ $currentUser->gamertag }}) ↗</a>
+                @else
+                    <a href="/login" class="py-2 text-sm font-mono uppercase tracking-wider text-[#E5C158] border-b border-white/[0.06]">Connexion Opérateur ↗</a>
+                @endif
             </div>
             <div class="flex items-center justify-between gap-3 pt-2">
                 <div class="flex items-center gap-2 px-3 py-2 border border-white/10 bg-[#0C1018] font-mono text-xs">
@@ -105,9 +121,15 @@
                     <span class="text-white/20">/</span>
                     <button type="button" data-lang-btn="en" class="text-[#64748B]">EN</button>
                 </div>
-                <button type="button" data-open-create-tournament class="h-12 flex-1 px-4 bg-[#D8E5F8] text-[#030407] font-mono text-xs font-bold uppercase tracking-wider rounded-none whitespace-nowrap">
-                    Créer une Ligue ↗
-                </button>
+                @if($currentUser)
+                    <button type="button" data-logout-btn class="h-12 flex-1 px-4 bg-[#EF4444]/20 border border-[#EF4444]/50 text-[#EF4444] font-mono text-xs font-bold uppercase tracking-wider rounded-none whitespace-nowrap">
+                        Déconnexion
+                    </button>
+                @else
+                    <a href="/register" class="h-12 flex-1 px-4 bg-[#D8E5F8] text-[#030407] font-mono text-xs font-bold uppercase tracking-wider rounded-none whitespace-nowrap inline-flex items-center justify-center">
+                        Ouvrir un Compte ↗
+                    </a>
+                @endif
             </div>
         </div>
     </header>
@@ -697,427 +719,9 @@
         </section>
 
         <!-- =================================================================
-             MODULE 5: SPLIT-SCREEN AUTH 50/50 & COCKPIT JOUEUR / ORGANISATEUR
-             ================================================================= -->
-        <section id="cockpit-section" class="py-20 lg:py-24 border-b border-white/[0.08] bg-[#030407]">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <!-- Section Header -->
-                <div class="mb-10">
-                    <div data-i18n="cockpit.kicker" class="text-[11px] font-mono uppercase tracking-[0.2em] text-[#E5C158] mb-2">
-                        MODULE 05 // AUTHENTIFICATION &amp; COCKPIT FINANCIER
-                    </div>
-                    <h2 data-i18n="cockpit.title" class="font-display font-extrabold text-2xl sm:text-3xl lg:text-4xl text-[#F4F7FB] tracking-tight uppercase">
-                        COCKPIT OPÉRATEUR, ARBRE DE TOURNOI &amp; GRAND LIVRE
-                    </h2>
-                </div>
-
-                <!-- PART A: 50/50 ASYMMETRIC SPLIT-SCREEN AUTH & 1-CLICK DEMO SWITCHER -->
-                <div id="auth-split-module" class="grid grid-cols-1 lg:grid-cols-12 border border-white/[0.08] bg-[#0C1018] mb-12">
-                    <!-- Left 50% (6 Cols): 1-Click Demo Operator Switcher & Cryptographic Security Specs -->
-                    <div class="lg:col-span-6 p-6 sm:p-8 lg:p-10 bg-[#0C1018] border-b lg:border-b-0 lg:border-r border-white/[0.08] flex flex-col justify-between">
-                        <div>
-                            <div class="inline-flex items-center gap-2 px-2.5 py-1 bg-[#E5C158]/15 border border-[#E5C158]/40 text-[#E5C158] font-mono text-[10px] uppercase tracking-widest mb-4">
-                                BASCULE OPÉRATEUR INSTANTANÉE // 1-CLICK DEMO LOGIN
-                            </div>
-                            <h3 class="font-display font-bold text-xl sm:text-2xl text-[#F4F7FB] mb-2">
-                                SIMULATEUR DE RÔLES &amp; ACCÈS DIRECT AU GRAND LIVRE
-                            </h3>
-                            <p class="text-sm text-[#94A3B8] leading-relaxed mb-6">
-                                Basculez instantanément entre le Commandement (<code class="text-[#E5C158]">ADMIN</code>), l'Arbitre Officiel (<code class="text-[#D8E5F8]">ORGANIZER</code>) ou les 4 Joueurs Compétitifs (<code class="text-[#10B981]">PLAYER</code>) pour tester les dépôts, les buy-ins et la distribution 60/30/10.
-                            </p>
-
-                            <!-- 6 One-Click Demo Login Buttons -->
-                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
-                                <button type="button" data-demo-email="admin@valkyr.arena" class="h-12 px-3.5 bg-[#080B11] border border-white/10 hover:border-[#E5C158] text-left flex items-center justify-between font-mono text-xs transition cursor-pointer">
-                                    <div>
-                                        <span class="font-bold text-[#F4F7FB] block">VKR_COMMANDER</span>
-                                        <span class="text-[10px] text-[#E5C158]">ADMIN // 5 000,00 €</span>
-                                    </div>
-                                    <span class="text-[#E5C158]">↗</span>
-                                </button>
-
-                                <button type="button" data-demo-email="organizer@valkyr.arena" class="h-12 px-3.5 bg-[#080B11] border border-white/10 hover:border-[#D8E5F8] text-left flex items-center justify-between font-mono text-xs transition cursor-pointer">
-                                    <div>
-                                        <span class="font-bold text-[#F4F7FB] block">VKR_ARBITER</span>
-                                        <span class="text-[10px] text-[#D8E5F8]">ORGANIZER // 2 500,00 €</span>
-                                    </div>
-                                    <span class="text-[#D8E5F8]">↗</span>
-                                </button>
-
-                                <button type="button" data-demo-email="nyx@valkyr.arena" class="h-12 px-3.5 bg-[#080B11] border border-white/10 hover:border-[#10B981] text-left flex items-center justify-between font-mono text-xs transition cursor-pointer">
-                                    <div>
-                                        <span class="font-bold text-[#F4F7FB] block">VKR_NYX</span>
-                                        <span class="text-[10px] text-[#10B981]">PLAYER // 2 365 MMR</span>
-                                    </div>
-                                    <span class="text-[#10B981]">↗</span>
-                                </button>
-
-                                <button type="button" data-demo-email="kestrel@valkyr.arena" class="h-12 px-3.5 bg-[#080B11] border border-white/10 hover:border-[#10B981] text-left flex items-center justify-between font-mono text-xs transition cursor-pointer">
-                                    <div>
-                                        <span class="font-bold text-[#F4F7FB] block">KESTREL_ZERO</span>
-                                        <span class="text-[10px] text-[#10B981]">PLAYER // 2 300 MMR</span>
-                                    </div>
-                                    <span class="text-[#10B981]">↗</span>
-                                </button>
-
-                                <button type="button" data-demo-email="aether@valkyr.arena" class="h-12 px-3.5 bg-[#080B11] border border-white/10 hover:border-[#10B981] text-left flex items-center justify-between font-mono text-xs transition cursor-pointer">
-                                    <div>
-                                        <span class="font-bold text-[#F4F7FB] block">AETHER_9</span>
-                                        <span class="text-[10px] text-[#10B981]">PLAYER // 2 235 MMR</span>
-                                    </div>
-                                    <span class="text-[#10B981]">↗</span>
-                                </button>
-
-                                <button type="button" data-demo-email="sovereign@valkyr.arena" class="h-12 px-3.5 bg-[#080B11] border border-white/10 hover:border-[#10B981] text-left flex items-center justify-between font-mono text-xs transition cursor-pointer">
-                                    <div>
-                                        <span class="font-bold text-[#F4F7FB] block">SOVEREIGN_X</span>
-                                        <span class="text-[10px] text-[#10B981]">PLAYER // 2 195 MMR</span>
-                                    </div>
-                                    <span class="text-[#10B981]">↗</span>
-                                </button>
-                            </div>
-                        </div>
-
-                        <div class="pt-4 border-t border-white/[0.08] flex items-center justify-between text-xs font-mono text-[#64748B]">
-                            <span>MOT DE PASSE UNIVERSEL DÉMO : <code class="text-[#D8E5F8]">Password123!</code></span>
-                            <button type="button" data-logout-btn class="text-[#EF4444] hover:underline cursor-pointer">Déconnecter session</button>
-                        </div>
-                    </div>
-
-                    <!-- Right 50% (6 Cols): Pure Obsidian Workspace with Sign In <-> Create Account Tabs -->
-                    <div class="lg:col-span-6 p-6 sm:p-8 lg:p-10 bg-[#080B11]">
-                        <!-- Underline Tabs -->
-                        <div class="flex items-center gap-6 border-b border-white/10 mb-6">
-                            <button
-                                type="button"
-                                id="tab-auth-login"
-                                class="pb-3 border-b-2 border-[#E5C158] text-[#F4F7FB] font-mono text-xs font-bold uppercase tracking-wider cursor-pointer"
-                            >
-                                Connexion (Sign in)
-                            </button>
-                            <button
-                                type="button"
-                                id="tab-auth-register"
-                                class="pb-3 text-[#64748B] hover:text-[#F4F7FB] font-mono text-xs font-bold uppercase tracking-wider cursor-pointer"
-                            >
-                                Créer un compte (Register)
-                            </button>
-                        </div>
-
-                        <!-- Login Form Panel -->
-                        <div id="panel-auth-login">
-                            <form id="form-auth-login" action="/login" method="POST" class="space-y-4">
-                                @csrf
-                                <div>
-                                    <label for="login-email" class="block text-[11px] font-mono uppercase tracking-wider text-[#94A3B8] mb-1.5">EMAIL OPÉRATEUR</label>
-                                    <input
-                                        type="email"
-                                        id="login-email"
-                                        name="email"
-                                        value="nyx@valkyr.arena"
-                                        required
-                                        class="w-full h-11 px-3.5 bg-[#0C1018] border border-white/15 text-sm font-mono text-[#F4F7FB] focus:border-[#D8E5F8] focus:outline-none"
-                                    />
-                                </div>
-
-                                <div>
-                                    <label for="login-password" class="block text-[11px] font-mono uppercase tracking-wider text-[#94A3B8] mb-1.5">MOT DE PASSE TACTIQUE</label>
-                                    <div class="flex items-center">
-                                        <input
-                                            type="password"
-                                            id="login-password"
-                                            name="password"
-                                            value="Password123!"
-                                            required
-                                            class="flex-1 h-11 px-3.5 bg-[#0C1018] border border-r-0 border-white/15 text-sm font-mono text-[#F4F7FB] focus:border-[#D8E5F8] focus:outline-none"
-                                        />
-                                        <button
-                                            type="button"
-                                            data-toggle-password="login-password"
-                                            class="h-11 px-4 bg-[#121824] border border-white/15 text-[11px] font-mono font-semibold text-[#D8E5F8] hover:text-[#E5C158] cursor-pointer"
-                                        >
-                                            AFFICHER
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <button
-                                    type="submit"
-                                    class="w-full h-12 bg-[#D8E5F8] text-[#030407] hover:bg-[#E5C158] font-mono text-xs font-bold uppercase tracking-wider rounded-none transition cursor-pointer"
-                                >
-                                    Initialiser la Connexion Tactique ↗
-                                </button>
-                            </form>
-                        </div>
-
-                        <!-- Register Form Panel -->
-                        <div id="panel-auth-register" class="hidden">
-                            <form id="form-auth-register" action="/register" method="POST" class="space-y-4">
-                                @csrf
-                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    <div>
-                                        <label for="reg-name" class="block text-[10px] font-mono uppercase tracking-wider text-[#94A3B8] mb-1">NOM D'OPÉRATEUR</label>
-                                        <input
-                                            type="text"
-                                            id="reg-name"
-                                            name="name"
-                                            placeholder="Ex: Astrid Lindholm"
-                                            required
-                                            class="w-full h-11 px-3 bg-[#0C1018] border border-white/15 text-xs font-mono text-[#F4F7FB] focus:border-[#D8E5F8] focus:outline-none"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label for="reg-gamertag" class="block text-[10px] font-mono uppercase tracking-wider text-[#94A3B8] mb-1">GAMERTAG UNIQUE</label>
-                                        <input
-                                            type="text"
-                                            id="reg-gamertag"
-                                            name="gamertag"
-                                            placeholder="Ex: VKR_ASTRID"
-                                            required
-                                            class="w-full h-11 px-3 bg-[#0C1018] border border-white/15 text-xs font-mono text-[#F4F7FB] focus:border-[#D8E5F8] focus:outline-none"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    <div>
-                                        <label for="reg-email" class="block text-[10px] font-mono uppercase tracking-wider text-[#94A3B8] mb-1">ADRESSE EMAIL</label>
-                                        <input
-                                            type="email"
-                                            id="reg-email"
-                                            name="email"
-                                            placeholder="astrid@valkyr.arena"
-                                            required
-                                            class="w-full h-11 px-3 bg-[#0C1018] border border-white/15 text-xs font-mono text-[#F4F7FB] focus:border-[#D8E5F8] focus:outline-none"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label for="reg-class" class="block text-[10px] font-mono uppercase tracking-wider text-[#94A3B8] mb-1">CLASSE D'ARSENAL</label>
-                                        <select
-                                            id="reg-class"
-                                            name="preferred_class"
-                                            class="w-full h-11 px-3 bg-[#0C1018] border border-white/15 text-xs font-mono text-[#F4F7FB] focus:border-[#D8E5F8] focus:outline-none"
-                                        >
-                                            <option value="VALKYRIE">VALKYRIE // SOVEREIGN-PRIME</option>
-                                            <option value="VANGUARD">VANGUARD // AEGIS-01</option>
-                                            <option value="SPECTRE">SPECTRE // KESTREL-V</option>
-                                            <option value="CHRONO">CHRONO // ORION-IX</option>
-                                        </select>
-                                    </div>
-                                </div>
-
-                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    <div>
-                                        <label for="reg-password" class="block text-[10px] font-mono uppercase tracking-wider text-[#94A3B8] mb-1">MOT DE PASSE (MIN 8 CAR.)</label>
-                                        <div class="flex items-center">
-                                            <input
-                                                type="password"
-                                                id="reg-password"
-                                                name="password"
-                                                required
-                                                class="flex-1 h-11 px-3 bg-[#0C1018] border border-r-0 border-white/15 text-xs font-mono text-[#F4F7FB] focus:border-[#D8E5F8] focus:outline-none"
-                                            />
-                                            <button
-                                                type="button"
-                                                data-toggle-password="reg-password"
-                                                class="h-11 px-2.5 bg-[#121824] border border-white/15 text-[10px] font-mono text-[#D8E5F8]"
-                                            >
-                                                AFFICHER
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label for="reg-password-confirm" class="block text-[10px] font-mono uppercase tracking-wider text-[#94A3B8] mb-1">CONFIRMATION</label>
-                                        <input
-                                            type="password"
-                                            id="reg-password-confirm"
-                                            name="password_confirmation"
-                                            required
-                                            class="w-full h-11 px-3 bg-[#0C1018] border border-white/15 text-xs font-mono text-[#F4F7FB] focus:border-[#D8E5F8] focus:outline-none"
-                                        />
-                                    </div>
-                                </div>
-
-                                <button
-                                    type="submit"
-                                    class="w-full h-12 bg-[#E5C158] text-[#030407] hover:bg-[#D8E5F8] font-mono text-xs font-bold uppercase tracking-wider rounded-none transition cursor-pointer"
-                                >
-                                    Créer mon Compte Opérateur &amp; Portefeuille ↗
-                                </button>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- PART B: COCKPIT SHELL (SIDEBAR WITH 2PX ACTIVE INDICATOR + MAIN WORKSPACE) -->
-                <div id="operator-cockpit" class="grid grid-cols-1 lg:grid-cols-12 border border-white/[0.08] bg-[#0C1018]">
-                    <!-- Sidebar Navigation (3 Cols) -->
-                    <aside class="lg:col-span-3 bg-[#080B11] border-b lg:border-b-0 lg:border-r border-white/[0.08] p-6 flex flex-col justify-between">
-                        <div>
-                            <div class="mb-6 pb-4 border-b border-white/[0.08]">
-                                <div class="text-[10px] font-mono uppercase tracking-widest text-[#64748B]">SESSION OPÉRATEUR</div>
-                                <div id="cockpit-operator-title" class="font-mono text-sm font-bold text-[#E5C158] mt-1">
-                                    {{ $currentUser ? $currentUser->gamertag . ' // [' . $currentUser->role . ']' : 'MODE APERÇU PUBLIC' }}
-                                </div>
-                                <div id="cockpit-operator-email" class="font-mono text-xs text-[#94A3B8] truncate mt-0.5">
-                                    {{ $currentUser ? $currentUser->email : 'Sélectionnez un profil Démo ci-dessus' }}
-                                </div>
-                                <div id="kpi-preferred-class" class="mt-2 inline-block px-2 py-0.5 bg-[#121824] border border-white/10 text-[10px] font-mono text-[#D8E5F8]">
-                                    LOADOUT ACTIF // {{ $currentUser ? $currentUser->preferred_class : 'VALKYRIE' }}
-                                </div>
-                            </div>
-
-                            <!-- Sidebar Links with 2px Vertical Active Indicator (border-l-2 border-[#E5C158]) -->
-                            <nav aria-label="Modules du Cockpit" class="space-y-1.5 font-mono text-xs">
-                                <button
-                                    type="button"
-                                    data-cockpit-nav="cockpit-kpi-panel"
-                                    class="w-full text-left px-4 py-3 border-l-2 border-[#E5C158] bg-[#121824] text-[#F4F7FB] font-semibold transition cursor-pointer"
-                                >
-                                    Portefeuille &amp; Solde Séquestre
-                                </button>
-                                <button
-                                    type="button"
-                                    data-cockpit-nav="cockpit-bracket-panel"
-                                    class="w-full text-left px-4 py-3 text-[#94A3B8] hover:text-[#F4F7FB] hover:bg-[#121824]/50 transition cursor-pointer"
-                                >
-                                    Arbre de Tournoi (Bracket)
-                                </button>
-                                <button
-                                    type="button"
-                                    data-cockpit-nav="cockpit-ledger-panel"
-                                    class="w-full text-left px-4 py-3 text-[#94A3B8] hover:text-[#F4F7FB] hover:bg-[#121824]/50 transition cursor-pointer"
-                                >
-                                    Grand Livre Immuable (Ledger)
-                                </button>
-                            </nav>
-                        </div>
-
-                        <!-- Transactional Action Triggers -->
-                        <div class="mt-8 pt-6 border-t border-white/[0.08] space-y-3">
-                            <button
-                                type="button"
-                                data-open-deposit-modal
-                                class="w-full h-11 px-4 bg-[#E5C158] text-[#030407] hover:bg-[#D8E5F8] font-mono text-xs font-bold uppercase tracking-wider rounded-none whitespace-nowrap transition cursor-pointer"
-                            >
-                                + Déposer des Fonds (SEPA)
-                            </button>
-                            <button
-                                type="button"
-                                data-open-create-tournament
-                                class="w-full h-11 px-4 bg-[#121824] border border-white/15 text-[#F4F7FB] hover:border-[#E5C158] font-mono text-xs font-semibold uppercase tracking-wider rounded-none whitespace-nowrap transition cursor-pointer"
-                            >
-                                Créer une Ligue Privée ↗
-                            </button>
-                        </div>
-                    </aside>
-
-                    <!-- Cockpit Main Workspace (9 Cols) -->
-                    <div class="lg:col-span-9 p-6 sm:p-8 space-y-10">
-                        <!-- 1. 4 Financial & ELO KPI Cards (Tabular-Nums) -->
-                        <div id="cockpit-kpi-panel" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-                            <div class="bg-[#080B11] border border-white/[0.08] p-5">
-                                <div class="text-[10px] font-mono uppercase tracking-widest text-[#64748B]">SOLDE DISPONIBLE</div>
-                                <div id="kpi-balance-cents" class="text-2xl font-mono font-bold text-[#F4F7FB] tabular-nums mt-2">
-                                    {{ $wallet ? \App\Models\Wallet::formatCents($wallet->balance_cents) : \App\Models\Wallet::formatCents($platformStats['total_escrow_locked_cents']) }}
-                                </div>
-                                <div class="text-[11px] font-mono text-[#10B981] mt-1">PRÊT POUR BUY-IN INSTANTANÉ</div>
-                            </div>
-
-                            <div class="bg-[#080B11] border border-[#E5C158]/35 p-5">
-                                <div class="text-[10px] font-mono uppercase tracking-widest text-[#E5C158]">SÉQUESTRE VERROUILLÉ</div>
-                                <div id="kpi-locked-escrow-cents" class="text-2xl font-mono font-bold text-[#E5C158] tabular-nums mt-2">
-                                    {{ $wallet ? \App\Models\Wallet::formatCents($wallet->locked_escrow_cents) : \App\Models\Wallet::formatCents($platformStats['total_escrow_locked_cents']) }}
-                                </div>
-                                <div class="text-[11px] font-mono text-[#94A3B8] mt-1">PROTECTION ACID ACTIVE</div>
-                            </div>
-
-                            <div class="bg-[#080B11] border border-white/[0.08] p-5">
-                                <div class="text-[10px] font-mono uppercase tracking-widest text-[#64748B]">GAINS CUMULÉS (NET 92%)</div>
-                                <div id="kpi-lifetime-won-cents" class="text-2xl font-mono font-bold text-[#10B981] tabular-nums mt-2">
-                                    {{ $wallet ? \App\Models\Wallet::formatCents($wallet->lifetime_won_cents) : \App\Models\Wallet::formatCents($platformStats['total_prizes_distributed_cents']) }}
-                                </div>
-                                <div class="text-[11px] font-mono text-[#94A3B8] mt-1">SPLIT 60% / 30% / 10%</div>
-                            </div>
-
-                            <div class="bg-[#080B11] border border-white/[0.08] p-5">
-                                <div class="text-[10px] font-mono uppercase tracking-widest text-[#64748B]">COTE COMPÉTITIVE ELO</div>
-                                <div id="kpi-elo-rating" class="text-2xl font-mono font-bold text-[#D8E5F8] tabular-nums mt-2">
-                                    {{ $currentUser ? $currentUser->elo_rating . ' MMR' : '2 365 MMR' }}
-                                </div>
-                                <div class="text-[11px] font-mono text-[#D8E5F8] mt-1">DIVISION SOUVERAINE I</div>
-                            </div>
-                        </div>
-
-                        <!-- 2. Interactive Tournament Bracket (Quarts, Demies, Petite Finale 3e Place, Grande Finale) -->
-                        <div id="cockpit-bracket-panel" class="border-t border-white/[0.08] pt-8">
-                            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-                                <div>
-                                    <div class="text-[10px] font-mono uppercase tracking-widest text-[#E5C158]">ARBRE COMPÉTITIF &amp; ALLOCATION CASHPRIZE</div>
-                                    <h3 class="font-display font-bold text-xl text-[#F4F7FB] uppercase mt-0.5">
-                                        BRACKET INTERACTIF (DEMIES · PETITE FINALE 10% · GRANDE FINALE 60%/30%)
-                                    </h3>
-                                </div>
-                                <div class="flex flex-wrap items-center gap-2">
-                                    @foreach($tournaments->take(3) as $tItem)
-                                        <button
-                                            type="button"
-                                            data-bracket-select="{{ $tItem->id }}"
-                                            class="h-9 px-3 border {{ $loop->first ? 'border-[#E5C158] bg-[#121824] text-[#F4F7FB]' : 'border-white/10 bg-[#080B11] text-[#94A3B8]' }} font-mono text-[11px] uppercase tracking-wider cursor-pointer"
-                                        >
-                                            #{{ $tItem->id }} {{ \Illuminate\Support\Str::limit($tItem->title, 18) }}
-                                        </button>
-                                    @endforeach
-                                </div>
-                            </div>
-
-                            <div id="interactive-bracket-container">
-                                <!-- Hydrated by app.js -->
-                            </div>
-                        </div>
-
-                        <!-- 3. Immutable Double-Entry Ledger Table (ledger_entries) -->
-                        <div id="cockpit-ledger-panel" class="border-t border-white/[0.08] pt-8">
-                            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-                                <div>
-                                    <div class="text-[10px] font-mono uppercase tracking-widest text-[#10B981]">GRAND LIVRE EN PARTIE DOUBLE // APPEND-ONLY</div>
-                                    <h3 class="font-display font-bold text-xl text-[#F4F7FB] uppercase mt-0.5">
-                                        HISTORIQUE DES ÉCRITURES COMPTABLES (<code class="text-sm text-[#E5C158]">ledger_entries</code>)
-                                    </h3>
-                                </div>
-                                <span class="px-3 py-1 bg-[#080B11] border border-white/10 font-mono text-[11px] text-[#94A3B8] tabular-nums">
-                                    INVARIANT: BALANCE_AFTER = BEFORE + CREDIT - DEBIT
-                                </span>
-                            </div>
-
-                            <div class="overflow-x-auto border border-white/[0.08] bg-[#080B11]">
-                                <table class="w-full text-left border-collapse">
-                                    <thead>
-                                        <tr class="border-b border-white/10 bg-[#0C1018] font-mono text-[10px] uppercase tracking-wider text-[#64748B]">
-                                            <th class="px-4 py-3">ID</th>
-                                            <th class="px-4 py-3">TYPE OPÉRATION</th>
-                                            <th class="px-4 py-3">DESCRIPTION</th>
-                                            <th class="px-4 py-3 text-right">DÉBIT</th>
-                                            <th class="px-4 py-3 text-right">CRÉDIT</th>
-                                            <th class="px-4 py-3 text-right">SOLDE APRÈS</th>
-                                            <th class="px-4 py-3">CLÉ D'IDEMPOTENCE</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="ledger-entries-tbody" class="divide-y divide-white/[0.05]">
-                                        <!-- Hydrated by app.js -->
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- =================================================================
              CLASSEMENT GÉNÉRAL ELO & GAINS VÉRIFIÉS (LEADERBOARD)
              ================================================================= -->
-        <section id="leaderboard-section" class="py-20 lg:py-24 bg-[#080B11] border-b border-white/[0.08]">
+        <section id="leaderboard-section" class="py-20 lg:py-24 bg-[#030407] border-b border-white/[0.08]">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="mb-8">
                     <div data-i18n="leaderboard.kicker" class="text-[11px] font-mono uppercase tracking-[0.2em] text-[#E5C158] mb-2">
@@ -1129,19 +733,19 @@
                 </div>
 
                 <div class="overflow-x-auto border border-white/[0.08] bg-[#0C1018]">
-                    <table class="w-full text-left border-collapse">
+                    <table class="w-full min-w-[760px] text-left border-collapse tabular-nums">
                         <thead>
-                            <tr class="border-b border-white/10 bg-[#080B11] font-mono text-[11px] uppercase tracking-wider text-[#64748B]">
-                                <th class="px-4 py-3.5">RANG</th>
-                                <th class="px-4 py-3.5">OPÉRATEUR</th>
-                                <th class="px-4 py-3.5">RÔLE</th>
-                                <th class="px-4 py-3.5">CLASSE ACTIVE</th>
-                                <th class="px-4 py-3.5 text-right">COTE ELO / MMR</th>
-                                <th class="px-4 py-3.5 text-right">GAINS CUMULÉS</th>
-                                <th class="px-4 py-3.5 text-right">ENJEU SÉQUESTRÉ</th>
+                            <tr class="border-b border-white/10 bg-[#080B11] font-mono text-[11px] uppercase tracking-wider text-[#64748B] whitespace-nowrap tabular-nums">
+                                <th class="px-4 py-3.5 whitespace-nowrap tabular-nums">RANG</th>
+                                <th class="px-4 py-3.5 whitespace-nowrap tabular-nums">OPÉRATEUR</th>
+                                <th class="px-4 py-3.5 whitespace-nowrap tabular-nums">RÔLE</th>
+                                <th class="px-4 py-3.5 whitespace-nowrap tabular-nums">CLASSE ACTIVE</th>
+                                <th class="px-4 py-3.5 text-right whitespace-nowrap tabular-nums">COTE ELO / MMR</th>
+                                <th class="px-4 py-3.5 text-right whitespace-nowrap tabular-nums">GAINS CUMULÉS</th>
+                                <th class="px-4 py-3.5 text-right whitespace-nowrap tabular-nums">ENJEU SÉQUESTRÉ</th>
                             </tr>
                         </thead>
-                        <tbody id="leaderboard-tbody">
+                        <tbody id="leaderboard-tbody" class="whitespace-nowrap tabular-nums">
                             <!-- Hydrated by app.js -->
                         </tbody>
                     </table>

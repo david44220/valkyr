@@ -9,8 +9,10 @@ use App\Http\Requests\RegisterTournamentRequest;
 use App\Http\Requests\SettleTournamentRequest;
 use App\Http\Requests\StoreTournamentRequest;
 use App\Models\Tournament;
+use App\Models\TournamentRegistration;
 use App\Models\User;
 use App\Services\EscrowLedgerService;
+use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -78,19 +80,167 @@ final class TournamentController extends Controller
         ]);
     }
 
-    public function show(Tournament $tournament): JsonResponse
+    /**
+     * Page 4 — Dedicated Tournament Arena Detail Page (GET /tournaments/{tournament:slug})
+     * Also returns structured JSON when called via /api/tournaments/{tournament} or expectsJson().
+     */
+    public function show(Request $request, Tournament $tournament, EscrowLedgerService $ledgerService): View|JsonResponse
     {
         $tournament->load([
             'organizer',
-            'registrations.user',
+            'registrations.user.wallet',
             'firstPlace',
             'secondPlace',
             'thirdPlace',
             'ledgerEntries.actor',
+            'ledgerEntries.wallet.user',
         ]);
 
-        return response()->json([
+        // Calculate exact server-side integer math breakdown (8% Rake + 60/30/10 Net Pool)
+        $grossPoolCents = (int) $tournament->escrow_pool_cents;
+        $referencePoolCents = $grossPoolCents > 0
+            ? $grossPoolCents
+            : (int) $tournament->entry_fee_cents * (int) $tournament->max_participants;
+
+        $rakeBps = (int) ($tournament->rake_bps ?: Tournament::DEFAULT_RAKE_BPS);
+        $rakeCents = $tournament->status === Tournament::STATUS_SETTLED && (int) $tournament->platform_rake_cents > 0
+            ? (int) $tournament->platform_rake_cents
+            : intdiv($referencePoolCents * $rakeBps, 10000);
+
+        $netPoolCents = $tournament->status === Tournament::STATUS_SETTLED && (int) $tournament->net_prize_pool_cents > 0
+            ? (int) $tournament->net_prize_pool_cents
+            : ($referencePoolCents - $rakeCents);
+
+        $secondPrizeCents = intdiv($netPoolCents * 3000, 10000);
+        $thirdPrizeCents = $tournament->format === '1v1' && $tournament->max_participants <= 2
+            ? 0
+            : intdiv($netPoolCents * 1000, 10000);
+        $firstPrizeCents = $netPoolCents - $secondPrizeCents - $thirdPrizeCents;
+
+        $financialBreakdown = [
+            'entry_fee_cents' => (int) $tournament->entry_fee_cents,
+            'escrow_pool_cents' => $grossPoolCents,
+            'reference_pool_cents' => $referencePoolCents,
+            'rake_bps' => $rakeBps,
+            'platform_rake_cents' => $rakeCents,
+            'net_prize_pool_cents' => $netPoolCents,
+            'first_prize_cents' => $firstPrizeCents,
+            'second_prize_cents' => $secondPrizeCents,
+            'third_prize_cents' => $thirdPrizeCents,
+        ];
+
+        // Build deterministic Bracket (Semi-Finals, 3rd Place Match, Grand Final)
+        $regs = $tournament->registrations->values();
+        $slot = function (int $index, string $fallbackTag) use ($regs): array {
+            /** @var TournamentRegistration|null $reg */
+            $reg = $regs->get($index);
+            if ($reg !== null && $reg->user !== null) {
+                return [
+                    'user_id' => $reg->user->id,
+                    'gamertag' => $reg->user->gamertag,
+                    'elo_rating' => $reg->user->elo_rating,
+                    'loadout_class' => $reg->loadout_class,
+                    'status' => $reg->status,
+                    'prize_won_cents' => $reg->prize_won_cents,
+                ];
+            }
+
+            return [
+                'user_id' => null,
+                'gamertag' => $fallbackTag,
+                'elo_rating' => 1500,
+                'loadout_class' => 'VANGUARD',
+                'status' => 'SEED_OPEN',
+                'prize_won_cents' => 0,
+            ];
+        };
+
+        $seed1 = $slot(0, 'SEED #1 // EN ATTENTE');
+        $seed2 = $slot(1, 'SEED #2 // EN ATTENTE');
+        $seed3 = $slot(2, 'SEED #3 // EN ATTENTE');
+        $seed4 = $slot(3, 'SEED #4 // EN ATTENTE');
+
+        $isSettled = $tournament->status === Tournament::STATUS_SETTLED;
+
+        $bracket = [
+            'semifinal_1' => [
+                'code' => 'SF-01',
+                'label' => 'DEMI-FINALE ALPHA',
+                'player_a' => $seed1,
+                'player_b' => $seed4,
+                'score_a' => $isSettled ? 13 : ($regs->count() >= 4 ? 11 : 0),
+                'score_b' => $isSettled ? 8 : ($regs->count() >= 4 ? 9 : 0),
+                'status' => $isSettled ? 'SETTLED' : ($regs->count() >= 2 ? 'LIVE' : 'UPCOMING'),
+            ],
+            'semifinal_2' => [
+                'code' => 'SF-02',
+                'label' => 'DEMI-FINALE OMEGA',
+                'player_a' => $seed2,
+                'player_b' => $seed3,
+                'score_a' => $isSettled ? 13 : ($regs->count() >= 3 ? 10 : 0),
+                'score_b' => $isSettled ? 10 : ($regs->count() >= 3 ? 7 : 0),
+                'status' => $isSettled ? 'SETTLED' : ($regs->count() >= 3 ? 'LIVE' : 'UPCOMING'),
+            ],
+            'third_place_match' => [
+                'code' => 'PF-3RD',
+                'label' => 'PETITE FINALE // 3E PLACE (10%)',
+                'prize_cents' => $thirdPrizeCents,
+                'player_a' => $isSettled && $tournament->thirdPlace !== null
+                    ? ['gamertag' => $tournament->thirdPlace->gamertag, 'elo_rating' => $tournament->thirdPlace->elo_rating]
+                    : $seed3,
+                'player_b' => $seed4,
+                'score_a' => $isSettled ? 13 : 0,
+                'score_b' => $isSettled ? 9 : 0,
+                'winner_gamertag' => $tournament->thirdPlace?->gamertag,
+                'status' => $isSettled ? 'SETTLED' : 'UPCOMING',
+            ],
+            'grand_final' => [
+                'code' => 'GF-01',
+                'label' => 'GRANDE FINALE SOUVERAINE (60% / 30%)',
+                'first_prize_cents' => $firstPrizeCents,
+                'second_prize_cents' => $secondPrizeCents,
+                'player_a' => $isSettled && $tournament->firstPlace !== null
+                    ? ['gamertag' => $tournament->firstPlace->gamertag, 'elo_rating' => $tournament->firstPlace->elo_rating]
+                    : $seed1,
+                'player_b' => $isSettled && $tournament->secondPlace !== null
+                    ? ['gamertag' => $tournament->secondPlace->gamertag, 'elo_rating' => $tournament->secondPlace->elo_rating]
+                    : $seed2,
+                'score_a' => $isSettled ? 13 : 0,
+                'score_b' => $isSettled ? 11 : 0,
+                'winner_gamertag' => $tournament->firstPlace?->gamertag,
+                'runner_up_gamertag' => $tournament->secondPlace?->gamertag,
+                'status' => $isSettled ? 'SETTLED' : 'UPCOMING',
+            ],
+        ];
+
+        if ($request->is('api/*') || $request->expectsJson()) {
+            return response()->json([
+                'tournament' => $tournament,
+                'financial_breakdown' => $financialBreakdown,
+                'bracket' => $bracket,
+            ]);
+        }
+
+        /** @var User|null $currentUser */
+        $currentUser = $request->user();
+        $wallet = $currentUser !== null ? $ledgerService->getOrCreateWallet($currentUser) : null;
+        $myRegistration = $currentUser !== null
+            ? $tournament->registrations->firstWhere('user_id', $currentUser->id)
+            : null;
+
+        $canManage = $currentUser !== null && (
+            $currentUser->isAdmin()
+            || ($currentUser->isOrganizer() && (int) $tournament->organizer_id === (int) $currentUser->id)
+        );
+
+        return view('tournaments.show', [
             'tournament' => $tournament,
+            'financialBreakdown' => $financialBreakdown,
+            'bracket' => $bracket,
+            'currentUser' => $currentUser,
+            'wallet' => $wallet,
+            'myRegistration' => $myRegistration,
+            'canManage' => $canManage,
         ]);
     }
 
@@ -128,7 +278,8 @@ final class TournamentController extends Controller
             ], 201);
         }
 
-        return back()->with('status', "Arène « {$tournament->title} » ouverte aux inscriptions.");
+        return redirect()->route('tournaments.show', ['tournament' => $tournament->slug])
+            ->with('status', "Arène « {$tournament->title} » ouverte aux inscriptions.");
     }
 
     public function register(

@@ -1,325 +1,158 @@
-# SPEC.md — VALKYR // ARENA
-**Plateforme Compétitive E-Sport de Ligues Privées, Tournois & Défis 1v1/5v5 avec Séquestre Atomique (Escrow) & Grand Livre en Partie Double**
+# SPEC.md — VALKYR // ARENA (v2 — Architecture Multi-Pages & Espace Membre Complet)
+**Plateforme Compétitive E-Sport de Ligues Privées, Tournois & Défis 1v1/5v5 avec Séquestre Atomique (Escrow), Retrait SEPA & Grand Livre en Partie Double**
 
 ---
 
-## 1. Analyse de l'Espace de Travail & Inventaire SSOT (4K / Code Existant)
+## 1. Analyse de l'Espace de Travail & Inventaire SSOT Immuable (4K / Code Existant)
 
-### 1.1 Diagnostic de l'Environnement Local
+### 1.1 Diagnostic & Conservation du Socle v1 ("Do No Harm")
 - **Répertoire racine :** `c:\Users\David\Desktop\Antigravity\bench6agents`
-- **État initial :** Dossier vierge (nouveau projet greenfield, aucun fichier préexistant à écraser).
-- **Runtimes détectés et vérifiés sur la machine hôte :**
-  - **PHP 8.5.8 (CLI / NTS x64)** avec `pdo_sqlite`, `sqlite3`, `pdo_pgsql`, `bcmath`, `mbstring`, `sodium`, `openssl`, `gd`, `fileinfo`, `zip`, `Zend OPcache`.
-  - **Composer 2.10.3**
-  - **Node.js v24.19.0 & npm 11.17.0**
-  - **SQLite (via PDO)** & **PostgreSQL 18 (Service actif)**
-
-### 1.2 Stack Technique Retenue
-- **Framework Backend & Full-Stack :** **PHP 8.5 + Laravel 13**
-- **Base de Données :** **SQLite** (`database/database.sqlite` par défaut dans `.env` pour une exécution locale instantanée et déterministe, et `:memory:` / SQLite isolé pour `php artisan test`, avec compatibilité totale **PostgreSQL 18**).
-- **Front-End & UI :** **Blade + Tailwind CSS v4 (Vite) + Architecture JS/TS Modulaire Haute Fréquence (60 FPS Canvas HUD, Scrollytelling Sticky Track, État Réactif & Fetch JSON/Web Dual)**.
-- **Dualité Réponse Web / JSON :** Chaque contrôleur transactionnel répond en **JSON structuré** lorsque la requête contient `Accept: application/json` (ou `X-Requested-With: XMLHttpRequest`) ET supporte la redirection / rendu Web classique avec messages flash, permettant à la fois :
-  1. L'exécution ultra-rapide des suites de tests PHPUnit/Pest (`Lead Developer` & `Red Team`).
-  2. L'interaction fluide sans rechargement brutal dans le navigateur Playwright (`Front End`, `Auditor QA` & `SRE & Perf`).
-
-### 1.3 Single Source of Truth (SSOT) — Assets Visuels 4K/8K Sur-Mesure
-L'agent `Front End` doit générer proactivement (via l'outil `generate_image`) et stocker dans `public/assets/` les visuels suivants (interdiction absolue d'utiliser des URLs Unsplash génériques ou des placeholders cassés) :
-1. `public/assets/hero-valkyr-arena.png` : Visuel Hero 8K sur-mesure représentant une arène tactique cyber-fantasy / sci-fi monumentale éclairée en rim-light studio (accents titane glacé `#D8E5F8` et or souverain `#E5C158` sur la moitié droite, et vide d'obsidienne abyssal naturel `#030407` sur la moitié gauche derrière le bloc typographique, zéro flou bokeh, zéro texte incrusté dans l'image).
-2. `public/assets/live-combat-hud.png` : Capture d'action tactique 4K/8K d'un affrontement 5v5 en arène compétitive servant de fond optique au module **Live Match Replay & HUD Tactique 60 FPS**.
-3. `public/assets/class-vanguard.png` : Portrait studio 4K de l'archétype **VANGUARD // AEGIS-01** (armure balistique lourde en titane mat et bouclier cinétique).
-4. `public/assets/class-spectre.png` : Portrait studio 4K de l'archétype **SPECTRE // KESTREL-V** (opérateur furtif de reconnaissance haute vélocité).
-5. `public/assets/class-chrono.png` : Portrait studio 4K de l'archétype **CHRONO // ORION-IX** (spécialiste de distorsion tactique et télémétrie orbitale).
-6. `public/assets/class-valkyrie.png` : Portrait studio 4K de l'archétype **VALKYRIE // SOVEREIGN-PRIME** (commandante d'assaut aérien aux accents d'or souverain `#E5C158`).
+- **Socle Technique Actif :** **PHP 8.5 + Laravel 13 (`v13.39.0`) + SQLite (`database/database.sqlite`) + Tailwind CSS v4 + Vite**.
+- **Inventaire SSOT Immuable (Verrouillage Strict — Interdiction de supprimer ou dégrader) :**
+  1. [`DESIGN_SYSTEM.md`](file:///c:/Users/David/Desktop/Antigravity/bench6agents/DESIGN_SYSTEM.md) : Palette OKLCH (`#030407` Obsidienne Abyssal, `#D8E5F8` Titane Glacé, `#E5C158` Or Souverain, `#10B981` Émeraude Télémétrie), Typographie à 3 niveaux (`Syne` + `Instrument Serif` *Vrai Italique* + `Plus Jakarta Sans` + `JetBrains Mono` `tabular-nums`), grilles `1px` (`rgba(255,255,255,0.08)`).
+  2. **Les 6 Visuels 4K/8K Sur-Mesure existants dans `public/assets/` (SSOT Verrouillé) :**
+     - `public/assets/hero-valkyr-arena.png` (1376x768 — Hero 8K rim-light studio avec vide abyssal à gauche)
+     - `public/assets/live-combat-hud.png` (1376x768 — Toile de fond du HUD Tactique 60 FPS)
+     - `public/assets/class-vanguard.png` (1200x896 — Archétype VANGUARD // AEGIS-01)
+     - `public/assets/class-spectre.png` (1200x896 — Archétype SPECTRE // KESTREL-V)
+     - `public/assets/class-chrono.png` (1200x896 — Archétype CHRONO // ORION-IX)
+     - `public/assets/class-valkyrie.png` (1200x896 — Archétype VALKYRIE // SOVEREIGN-PRIME)
+  3. **Moteur Financier [`EscrowLedgerService.php`](file:///c:/Users/David/Desktop/Antigravity/bench6agents/app/Services/EscrowLedgerService.php) & Triggers SQLite d'Immuabilité :**
+     - Conservés à 100 % et enrichis de l'opération atomique de **Retrait Bancaire SEPA (`withdraw`)**.
 
 ---
 
-## 2. Architecture Base de Données, Ledger en Partie Double & Sécurité
+## 2. Architecture Multi-Pages & Fonctionnelle Exigée (4 Vraies Pages Distinctes)
 
-### 2.1 Schéma Relationnel Exact & Index SQL
-
-#### Table `users`
-| Colonne | Type SQL | Contraintes & Description |
-| :--- | :--- | :--- |
-| `id` | `BIGINT UNSIGNED` | Primary Key, Auto-increment |
-| `name` | `VARCHAR(120)` | Nom complet ou nom d'affichage |
-| `gamertag` | `VARCHAR(60)` | `UNIQUE`, `NOT NULL`, ex: `VKR_NYX`, `SOVEREIGN_01` |
-| `email` | `VARCHAR(190)` | `UNIQUE`, `NOT NULL` |
-| `password` | `VARCHAR(255)` | Hash Bcrypt/Argon2id |
-| `role` | `VARCHAR(20)` | `NOT NULL DEFAULT 'PLAYER'` — Valeurs : `'ADMIN'`, `'ORGANIZER'`, `'PLAYER'` |
-| `elo_rating` | `INTEGER` | `NOT NULL DEFAULT 1500` (Score MMR/ELO en `tabular-nums`) |
-| `preferred_class` | `VARCHAR(40)` | `NOT NULL DEFAULT 'VANGUARD'` (`VANGUARD`, `SPECTRE`, `CHRONO`, `VALKYRIE`) |
-| `remember_token` | `VARCHAR(100)` | Nullable |
-| `created_at` / `updated_at` | `TIMESTAMP` | Index sur `role`, `elo_rating DESC` |
-
-#### Table `wallets`
-| Colonne | Type SQL | Contraintes & Description |
-| :--- | :--- | :--- |
-| `id` | `BIGINT UNSIGNED` | Primary Key, Auto-increment |
-| `user_id` | `BIGINT UNSIGNED` | `UNIQUE`, `NOT NULL`, FK `users(id) ON DELETE CASCADE` |
-| `balance_cents` | `BIGINT` | `NOT NULL DEFAULT 0` — Solde disponible en centimes entiers (`>= 0`) |
-| `locked_escrow_cents` | `BIGINT` | `NOT NULL DEFAULT 0` — Montant engagé en séquestre par ce joueur (`>= 0`) |
-| `lifetime_won_cents` | `BIGINT` | `NOT NULL DEFAULT 0` — Cumul historique des cashprizes remportés |
-| `currency` | `CHAR(3)` | `NOT NULL DEFAULT 'EUR'` |
-| `created_at` / `updated_at` | `TIMESTAMP` | Contrainte logique : `balance_cents >= 0` |
-
-> **Comptes Système Obligatoires (créés par le `DatabaseSeeder` et auto-initialisés par le service Ledger) :**
-> - Utilisateur système **Escrow Vault** (`email: escrow.vault@valkyr.arena`, `role: ADMIN`) possédant le portefeuille séquestre central où transitent les fonds verrouillés si besoin de contrepartie globale.
-> - Utilisateur système **Platform Treasury** (`email: treasury@valkyr.arena`, `role: ADMIN`) possédant le portefeuille qui reçoit la commission plateforme de **8 % (`800 bps`)** lors de la clôture d'un tournoi.
-
-#### Table `tournaments`
-| Colonne | Type SQL | Contraintes & Description |
-| :--- | :--- | :--- |
-| `id` | `BIGINT UNSIGNED` | Primary Key, Auto-increment |
-| `organizer_id` | `BIGINT UNSIGNED` | `NOT NULL`, FK `users(id) ON DELETE RESTRICT` |
-| `slug` | `VARCHAR(140)` | `UNIQUE`, `NOT NULL` |
-| `title` | `VARCHAR(160)` | `NOT NULL` |
-| `game` | `VARCHAR(80)` | `NOT NULL` (`VALORANT // PROTOCOL`, `COUNTER-STRIKE 2`, `APEX // SOVEREIGN`, `LEAGUE OF LEGENDS`) |
-| `format` | `VARCHAR(20)` | `NOT NULL DEFAULT '5v5'` (`1v1`, `5v5`) |
-| `status` | `VARCHAR(24)` | `NOT NULL DEFAULT 'OPEN'` — Machine à états : `'OPEN'`, `'LOCKED'`, `'IN_PROGRESS'`, `'SETTLED'`, `'CANCELLED'` |
-| `entry_fee_cents` | `BIGINT` | `NOT NULL` (`> 0`, frais d'entrée / Buy-in par participant en centimes) |
-| `escrow_pool_cents` | `BIGINT` | `NOT NULL DEFAULT 0` (Somme exacte actuellement verrouillée en séquestre) |
-| `sponsored_Guarantee_cents` | `BIGINT` | `NOT NULL DEFAULT 0` (Dotation additionnelle éventuelle) |
-| `rake_bps` | `INTEGER` | `NOT NULL DEFAULT 800` (800 points de base = 8.00 % strict) |
-| `platform_rake_cents` | `BIGINT` | `NOT NULL DEFAULT 0` (Commission prélevée à la clôture) |
-| `net_prize_pool_cents` | `BIGINT` | `NOT NULL DEFAULT 0` (Cashprize net distribué aux gagnants à la clôture) |
-| `max_participants` | `INTEGER` | `NOT NULL DEFAULT 16` (`>= 2`) |
-| `registered_count` | `INTEGER` | `NOT NULL DEFAULT 0` |
-| `first_place_user_id` | `BIGINT UNSIGNED` | Nullable, FK `users(id)` |
-| `second_place_user_id` | `BIGINT UNSIGNED` | Nullable, FK `users(id)` |
-| `third_place_user_id` | `BIGINT UNSIGNED` | Nullable, FK `users(id)` |
-| `settlement_idempotency_key` | `VARCHAR(120)` | Nullable, `UNIQUE` |
-| `starts_at` | `TIMESTAMP` | Nullable |
-| `settled_at` | `TIMESTAMP` | Nullable |
-| `created_at` / `updated_at` | `TIMESTAMP` | Index sur `(status, game)`, `(entry_fee_cents)`, `(organizer_id)` |
-
-#### Table `tournament_registrations`
-| Colonne | Type SQL | Contraintes & Description |
-| :--- | :--- | :--- |
-| `id` | `BIGINT UNSIGNED` | Primary Key, Auto-increment |
-| `tournament_id` | `BIGINT UNSIGNED` | `NOT NULL`, FK `tournaments(id) ON DELETE CASCADE` |
-| `user_id` | `BIGINT UNSIGNED` | `NOT NULL`, FK `users(id) ON DELETE CASCADE` |
-| `loadout_class` | `VARCHAR(40)` | `NOT NULL DEFAULT 'VANGUARD'` |
-| `paid_entry_fee_cents` | `BIGINT` | `NOT NULL` |
-| `prize_won_cents` | `BIGINT` | `NOT NULL DEFAULT 0` |
-| `status` | `VARCHAR(24)` | `NOT NULL DEFAULT 'REGISTERED'` (`REGISTERED`, `WINNER_1ST`, `WINNER_2ND`, `WINNER_3RD`, `ELIMINATED`, `REFUNDED`) |
-| `idempotency_key` | `VARCHAR(120)` | `UNIQUE`, `NOT NULL` |
-| `created_at` / `updated_at` | `TIMESTAMP` | **Contrainte `UNIQUE(tournament_id, user_id)` obligatoire** |
-
-#### Table `ledger_entries` (Append-Only Immutable Double-Entry Ledger)
-| Colonne | Type SQL | Contraintes & Description |
-| :--- | :--- | :--- |
-| `id` | `BIGINT UNSIGNED` | Primary Key, Auto-increment |
-| `wallet_id` | `BIGINT UNSIGNED` | `NOT NULL`, FK `wallets(id) ON DELETE RESTRICT` |
-| `tournament_id` | `BIGINT UNSIGNED` | Nullable, FK `tournaments(id) ON DELETE RESTRICT` |
-| `actor_id` | `BIGINT UNSIGNED` | Nullable, FK `users(id) ON DELETE RESTRICT` (Utilisateur ayant déclenché l'écriture) |
-| `entry_type` | `VARCHAR(40)` | `NOT NULL` (`DEPOSIT`, `WITHDRAWAL`, `BUY_IN_ESCROW_DEBIT`, `BUY_IN_ESCROW_CREDIT`, `PRIZE_PAYOUT_1ST`, `PRIZE_PAYOUT_2ND`, `PRIZE_PAYOUT_3RD`, `ESCROW_RELEASE_DEBIT`, `PLATFORM_RAKE_CREDIT`, `TOURNAMENT_REFUND_DEBIT`, `TOURNAMENT_REFUND_CREDIT`) |
-| `debit_cents` | `BIGINT` | `NOT NULL DEFAULT 0` (`>= 0`) |
-| `credit_cents` | `BIGINT` | `NOT NULL DEFAULT 0` (`>= 0`) |
-| `balance_before_cents` | `BIGINT` | `NOT NULL` |
-| `balance_after_cents` | `BIGINT` | `NOT NULL` (`balance_before_cents + credit_cents - debit_cents`) |
-| `idempotency_key` | `VARCHAR(140)` | `UNIQUE`, `NOT NULL` |
-| `description` | `VARCHAR(255)` | `NOT NULL` |
-| `metadata` | `JSON / TEXT` | Nullable |
-| `created_at` | `TIMESTAMP` | `NOT NULL`, Index sur `(wallet_id, created_at DESC)` et `(tournament_id)` |
+### 2.1 Diagnostic du Problème Résolu par la v2
+Dans la v1, toute l'application était empilée sur une seule page monolithique (`GET /`). La v2 découpe l'application en **4 vraies pages distinctes** avec un routage Laravel authentique (`guest` / `auth` middlewares), une navigation multi-vues par onglets réels dans le Cockpit (zéro `scrollIntoView` !), des pages dédiées par tournoi (`/tournaments/{slug}`) et le retrait bancaire SEPA (`POST /api/wallets/withdraw`).
 
 ---
 
-### 2.2 Invariants Financiers, Machine à États & Anti-TOCTOU
-
-1. **Immuabilité Absolue du Grand Livre (`ledger_entries`) :**
-   - Aucune ligne de `ledger_entries` ne peut jamais être modifiée (`UPDATE`) ou supprimée (`DELETE`).
-   - Le modèle Eloquent `LedgerEntry` DOIT intercepter `updating` et `deleting` dans `booted()` et lever une exception `DomainException` / `LogicException` (`"Immutable ledger: entries cannot be updated or deleted."`).
-   - La migration SQL DOIT également créer deux triggers SQL (`prevent_ledger_entries_update` et `prevent_ledger_entries_delete`) utilisant `RAISE(ABORT, 'Immutable ledger entry')` sur SQLite (ou une fonction trigger sur PostgreSQL) afin que même une requête `DB::table('ledger_entries')->update(...)` ou `delete()` échoue immédiatement au niveau du moteur SQL.
-
-2. **Invariant de Conservation Monétaire & Solde Portefeuille :**
-   - Pour tout `wallet` :
-     $$\text{wallet.balance\_cents} = \sum \text{credit\_cents} - \sum \text{debit\_cents}$$
-   - Pour chaque ligne de `ledger_entries` :
-     $$\text{balance\_after\_cents} = \text{balance\_before\_cents} + \text{credit\_cents} - \text{debit\_cents}$$
-   - Aucun `wallet.balance_cents` ne peut jamais devenir négatif (`< 0`). Toute tentative de dépôt/retrait/buy-in avec un montant `<= 0` ou non entier est rejetée en `422 Unprocessable Entity`.
-
-3. **Protocole Atomique d'Inscription (Buy-in) & Anti-TOCTOU :**
-   - Lors de `POST /api/tournaments/{tournament}/register` (ou `/tournaments/{tournament}/register`) :
-     1. Vérifier la présence de `idempotency_key`. Si une inscription avec cette clé existe déjà pour ce joueur et ce tournoi, retourner l'état existant de façon idempotente (`200 OK`) sans re-débiter. Si la clé est réutilisée pour une opération différente, retourner `409 Conflict`.
-     2. Ouvrir une transaction ACID (`DB::transaction()`).
-     3. Verrouiller la ligne du tournoi (`Tournament::whereKey($id)->lockForUpdate()->firstOrFail()`).
-     4. Identifier les portefeuilles à verrouiller : le portefeuille du joueur (`$playerWalletId`) et le portefeuille système `Escrow Vault` (`$escrowWalletId`). **Les verrouiller par ordre d'ID croissant strict (`Wallet::whereIn('id', [$playerWalletId, $escrowWalletId])->orderBy('id', 'asc')->lockForUpdate()->get()`)** pour empêcher tout deadlock concurrent.
-     5. **Strictement APRÈS l'acquisition des verrous**, vérifier :
-        - `$tournament->status === 'OPEN'` (sinon `409 Conflict` / `422`).
-        - `$tournament->registered_count < $tournament->max_participants` (sinon `409 Conflict` : tournoi complet).
-        - Non-existence d'une inscription pour `(tournament_id, user_id)` (sinon `409 Conflict` : déjà inscrit).
-        - `$playerWallet->balance_cents >= $tournament->entry_fee_cents` (sinon `422 Unprocessable Entity` : fonds insuffisants).
-     6. Débiter `$playerWallet` de `entry_fee_cents` (écriture `BUY_IN_ESCROW_DEBIT` avec clé `{$idempotencyKey}:player_debit`), incrémenter `$playerWallet->locked_escrow_cents += entry_fee_cents`.
-     7. Créditer `$escrowWallet` de `entry_fee_cents` (écriture `BUY_IN_ESCROW_CREDIT` avec clé `{$idempotencyKey}:escrow_credit`).
-     8. Incrémenter `$tournament->escrow_pool_cents += entry_fee_cents` et `$tournament->registered_count += 1` (si `registered_count === max_participants`, passer automatiquement `$tournament->status = 'LOCKED'`).
-     9. Créer la ligne dans `tournament_registrations`.
-
-4. **Protocole Atomique de Clôture & Distribution du Cashprize (`settle`) :**
-   - Lors de `POST /api/tournaments/{tournament}/settle` :
-     1. **Contrôle d'Accès Strict (Anti-IDOR / Anti-BFLA via `TournamentPolicy::settle`) :**
-        - Seul un utilisateur ayant `role === 'ADMIN'` OU l'organisateur propriétaire légitime du tournoi (`$user->role === 'ORGANIZER' && (int) $tournament->organizer_id === (int) $user->id`) est autorisé.
-        - Tout simple `PLAYER` ou un autre `ORGANIZER` n'étant pas propriétaire du tournoi DOIT recevoir un **`403 Forbidden`** immédiat.
-     2. Ouvrir une transaction ACID et verrouiller le tournoi (`lockForUpdate()`).
-     3. Si le tournoi est déjà `SETTLED` avec la même `idempotency_key`, retourner la réponse de façon idempotente (`200 OK`). S'il est déjà `SETTLED` avec une autre clé ou `CANCELLED`, rejeter avec **`409 Conflict`** (interdiction absolue de distribuer deux fois le cashprize !).
-     4. Vérifier que le tournoi est en statut `OPEN`, `LOCKED` ou `IN_PROGRESS`, que `$tournament->escrow_pool_cents > 0`, et que les gagnants soumis (`first_place_user_id`, `second_place_user_id`, `third_place_user_id`) sont tous distincts et **effectivement inscrits** dans `tournament_registrations` pour ce tournoi (sinon `422 Unprocessable Entity`).
-     5. Verrouiller tous les `wallets` impliqués (`Escrow Vault`, `Platform Treasury`, `1st`, `2nd`, `3rd`) par **ordre d'ID croissant (`ORDER BY id ASC`)**.
-     6. **Calcul arithmétique entier exact (Zéro Float) :**
-        - `$totalPool = (int) $tournament->escrow_pool_cents;`
-        - `$rakeCents = intdiv($totalPool * 800, 10000);` (Commission plateforme de **8 %**)
-        - `$netPoolCents = $totalPool - $rakeCents;`
-        - Si 3 gagnants sont fournis (mode standard 60 % / 30 % / 10 %) :
-          * `$secondPrize = intdiv($netPoolCents * 3000, 10000);` (**30 %**)
-          * `$thirdPrize = intdiv($netPoolCents * 1000, 10000);` (**10 %**)
-          * `$firstPrize = $netPoolCents - $secondPrize - $thirdPrize;` (**60 %** + reliquat d'arrondi éventuel)
-        - Si `third_place_user_id` est `null` (ex: défi 1v1 à 2 joueurs uniquement) :
-          * `$secondPrize = intdiv($netPoolCents * 3000, 10000);` (**30 %**)
-          * `$thirdPrize = 0;`
-          * `$firstPrize = $netPoolCents - $secondPrize;` (**70 %**)
-        - Vérification d'invariant obligatoire avant commit :
-          `assert($rakeCents + $firstPrize + $secondPrize + $thirdPrize === $totalPool)`
-     7. Débiter le portefeuille `Escrow Vault` de `$totalPool` (`ESCROW_RELEASE_DEBIT`), créditer `Platform Treasury` de `$rakeCents` (`PLATFORM_RAKE_CREDIT`), et créditer les portefeuilles des gagnants de `$firstPrize` (`PRIZE_PAYOUT_1ST`), `$secondPrize` (`PRIZE_PAYOUT_2ND`) et `$thirdPrize` (`PRIZE_PAYOUT_3RD`).
-     8. Mettre à jour `locked_escrow_cents` des participants inscrits, mettre à jour `elo_rating` (`+25` pour le 1er, `+10` pour le 2e, `+5` pour le 3e), passer `$tournament->status = 'SETTLED'`, enregistrer `platform_rake_cents`, `net_prize_pool_cents`, `settled_at`, et `settlement_idempotency_key`.
-
-5. **Protocole Atomique d'Annulation & Remboursement Intégral (`cancel`) :**
-   - Lors de `POST /api/tournaments/{tournament}/cancel` :
-     - Autorisé uniquement pour `ADMIN` ou l'`ORGANIZER` propriétaire du tournoi (`403 Forbidden` sinon).
-     - Si le tournoi est déjà `SETTLED` ou `CANCELLED`, retourner `409 Conflict`.
-     - Verrouiller le tournoi et tous les `wallets` des participants inscrits + `Escrow Vault` par `ORDER BY id ASC`.
-     - Rembourser **100 %** de `paid_entry_fee_cents` du compte `Escrow Vault` vers le `wallet` de chaque joueur inscrit (zéro commission prélevée sur un tournoi annulé), remettre `escrow_pool_cents = 0` et `status = 'CANCELLED'`.
+### 2.2 Page 1 — Vitrine Publique & Découverte (`GET /` — `resources/views/welcome.blade.php`, route `home`)
+- **Contenu exclusif de `GET /` :**
+  1. **Header `100% bg-transparent` à `scrollY === 0` avec état dynamique `@guest` vs `@auth` :**
+     - Marque `✦ VALKYR` sur une seule ligne + 4 liens non numérotés (`Arènes`, `Live Replay`, `Arsenal`, `Classement`) + switch bilingue `FR / EN`.
+     - **Si non connecté (`@guest`) :** Affiche le lien `Connexion` (pointant vers `GET /login`) et le bouton CTA à angles vifs `0px` `Ouvrir un Compte ↗` (pointant vers `GET /register`).
+     - **Si connecté (`@auth`) :** Remplace `"Connexion"` par le badge opérateur (`VKR_NYX [PLAYER]` + solde en `tabular-nums`), le bouton primaire `Mon Cockpit ↗` (pointant vers `GET /dashboard`) et un bouton explicite `Déconnexion` (`POST /logout`).
+  2. **Hero 8K Pur** : Limité aux 4 éléments stricts (Kicker, `<h1>` sur exactement 2 lignes avec Ligne 1 en Romain droit `Syne` et Ligne 2 en *Vrai Italique* `Instrument Serif` `#E5C158`, sous-titre sur 2 lignes max, et 2 boutons CTA à angles vifs `0px` avec flèches). Image `<img src="/assets/hero-valkyr-arena.png" fetchpriority="high" decoding="sync">` avec `filter: none`, `transform: none` et zéro calque d'assombrissement.
+  3. **Ruban de Télémétrie Globale** (`#telemetry-ribbon`).
+  4. **Module 1 : Live Match Replay & HUD Tactique 60 FPS** (`#live-replay-section`) + Modale Replay 4K plein écran (`#replay-fullscreen-modal`).
+  5. **Module 2 : Scrollytelling Pinned Sticky en 3 Chapitres** (`#scrollytelling-track`).
+  6. **Module 3 : Sélecteur Interactif d'Arsenal (4 Classes)** (`#arsenal-section`).
+  7. **Module 4 : Catalogue Filtrable des Tournois & Ligues Privées** (`#arenas-catalog` — où chaque carte permet soit d'ouvrir la page dédiée de l'arène `GET /tournaments/{slug}`, soit de s'inscrire via Buy-in) + **Classement Général ELO** (`#leaderboard-section`).
+- **INTERDICTION FORMELLE sur `GET /` :** `#auth-split-module` et `#operator-cockpit` sont **strictement supprimés** de la page d'accueil `GET /` !
 
 ---
 
-## 3. Contrat Backend ⇄ Front-End & Matrice des Rôles
-
-### 3.1 Matrice des Rôles & Permissions
-| Action / Route | `PLAYER` | `ORGANIZER` | `ADMIN` | Règle de Sécurité (Anti-IDOR / Anti-BFLA) |
-| :--- | :---: | :---: | :---: | :--- |
-| Consulter sa propre wallet & son ledger | ✅ | ✅ | ✅ | Vérification stricte `wallet.user_id === auth()->id()` (sauf `ADMIN`) |
-| Consulter la wallet d'un autre joueur (`/api/wallets/{id}`) | ❌ (`403`) | ❌ (`403`) | ✅ | Policy `WalletPolicy::view` bloque tout accès croisé |
-| Déposer des fonds sur son portefeuille (`POST /api/wallets/deposit`) | ✅ | ✅ | ✅ | Crédite uniquement `auth()->user()->wallet` |
-| S'inscrire (Buy-in) à un tournoi `OPEN` | ✅ | ✅ | ✅ | Transaction ACID + verrou pessimiste + clé d'idempotence |
-| Créer un nouveau tournoi / ligue privée | ❌ (`403`) | ✅ | ✅ | `organizer_id` forcé à `auth()->id()` côté serveur (Mass-Assignment protégé) |
-| Clôturer un tournoi & distribuer le Cashprize (`settle`) | ❌ (`403`) | ✅ (Propriétaire) | ✅ (Tous) | `TournamentPolicy::settle` vérifie `$user->isAdmin() \|\| $tournament->organizer_id === $user->id` |
-| Annuler un tournoi & rembourser l'Escrow (`cancel`) | ❌ (`403`) | ✅ (Propriétaire) | ✅ (Tous) | `TournamentPolicy::cancel` vérifie `$user->isAdmin() \|\| $tournament->organizer_id === $user->id` |
-
-### 3.2 Routes Web & API et Noms de Champs Exacts (`name="..."`)
-
-> **Important :** Toutes les routes d'action doivent être accessibles à la fois en préfixe `/api/...` et en route web directe (ou unifiées via les mêmes contrôleurs) afin que les appels `fetch('/api/...')` du Front-End et les tests HTTP fonctionnent sans aucune friction.
-
-1. **`GET /` (Route nommée `home`) :**
-   - Affiche la plateforme complète **VALKYR // ARENA** (Header, Hero 8K, Live Match Replay & HUD 60 FPS + Modale Plein Écran, Scrollytelling Pinned Sticky 3 Chapitres, Sélecteur d'Arsenal 4 Classes, Catalogue Filtrable des Tournois, Split-Screen Auth 50/50, et Cockpit Joueur/Organisateur avec Arbre de Tournoi et Grand Livre).
-   - Injecte les données initiales hydratées depuis la base de données (`tournaments`, `currentUser`, `wallet`, `ledgerEntries`, `leaderboard`, `platformStats`).
-
-2. **`POST /api/auth/register` & `POST /register` :**
-   - Champs exacts : `name`, `gamertag`, `email`, `password`, `password_confirmation`, `preferred_class` (optionnel : `VANGUARD`, `SPECTRE`, `CHRONO`, `VALKYRIE`).
-   - Règle de sécurité : Le champ `role` envoyé par un client est **toujours ignoré** (forcé à `'PLAYER'`) pour empêcher toute élévation de privilèges par Mass-Assignment. Crée automatiquement le `Wallet` associé avec un bonus de bienvenue initial optionnel ou `0` centimes.
-
-3. **`POST /api/auth/login` & `POST /login` :**
-   - Champs exacts : `email`, `password`.
-   - Rate-limiting : `throttle:10,1` (retourne `429 Too Many Requests` en cas de brute-force).
-
-4. **`POST /api/auth/logout` & `POST /logout` :**
-   - Déconnecte la session courante.
-
-5. **`POST /api/wallets/deposit` :**
-   - Champs exacts : `amount_cents` (`integer`, min `100`, max `10000000`), `idempotency_key` (`string`, `required`, max `120`).
-   - Retourne `200`/`201` avec `{ wallet, ledger_entry }`.
-
-6. **`GET /api/wallets/{wallet}` :**
-   - Protégé par `WalletPolicy::view` (`403 Forbidden` si `wallet.user_id !== auth()->id()` et non `ADMIN`).
-   - Retourne le portefeuille et ses écritures de ledger.
-
-7. **`GET /api/tournaments` :**
-   - Paramètres de filtre optionnels : `game`, `status`, `format`, `min_Buy_in_cents`, `max_buy_in_cents`, `min_prize_cents`, `search`.
-   - Retourne la liste des tournois avec leurs inscriptions et le décompte total.
-
-8. **`POST /api/tournaments` :**
-   - Autorisé pour `ORGANIZER` et `ADMIN` (`403 Forbidden` pour `PLAYER`).
-   - Champs exacts : `title`, `game`, `format` (`1v1` ou `5v5`), `entry_fee_cents` (`integer > 0`), `max_participants` (`integer`, min `2`, max `128`), `starts_at` (optionnel).
-
-9. **`POST /api/tournaments/{tournament}/register` :**
-   - Champs exacts : `idempotency_key` (`string`, `required`), `loadout_class` (`string`, optionnel : `VANGUARD`, `SPECTRE`, `CHRONO`, `VALKYRIE`).
-   - Exécute le verrouillage pessimiste `SELECT ... FOR UPDATE` par `ORDER BY id ASC`, vérifie `balance_cents >= entry_fee_cents` après verrou, et transfère les fonds vers l'Escrow.
-
-10. **`POST /api/tournaments/{tournament}/settle` :**
-    - Autorisé uniquement pour `ADMIN` ou l'`ORGANIZER` propriétaire du tournoi (`403 Forbidden` sinon).
-    - Champs exacts : `first_place_user_id` (`integer`, `required`), `second_place_user_id` (`integer`, `required`), `third_place_user_id` (`integer`, `nullable`), `idempotency_key` (`string`, `required`).
-    - Calcule et prélève les **8 % (`800 bps`)** de commission plateforme et distribue le pool net (**60 % / 30 % / 10 %**) en centimes entiers.
-
-11. **`POST /api/tournaments/{tournament}/cancel` :**
-    - Autorisé uniquement pour `ADMIN` ou l'`ORGANIZER` propriétaire du tournoi (`403 Forbidden` sinon).
-    - Champs exacts : `idempotency_key` (`string`, `required`), `reason` (`string`, optionnel).
-    - Rembourse atomiquement 100 % des frais d'entrée séquestrés aux joueurs inscrits.
+### 2.3 Page 2 — Authentification Split-Screen 50/50 Dédiée (`GET /login` & `GET /register` — `resources/views/auth/login.blade.php`)
+- **Accès & Protection :**
+  - Routes `GET /login` (route nommée `login`) et `GET /register` (route nommée `register`) protégées par le middleware `guest` (tout utilisateur déjà authentifié est redirigé automatiquement vers `GET /dashboard`).
+- **Mise en page 50/50 Asymmetric Split-Screen plein écran (`min-h-dvh`) :**
+  - **Moitié Gauche (50%) :** Artwork 4K/8K pur sans flou (`/assets/hero-valkyr-arena.png` ou `/assets/class-valkyrie.png` avec `filter: none`, `transform: none`), déclaration éditoriale souveraine, télémétrie du Grand Livre en direct, et **Simulateur de Rôles Démo en 1 Clic** (`ADMIN` `VKR_COMMANDER`, `ORGANIZER` `VKR_ARBITER`, `ORGANIZER` `RIVAL_HOST`, `PLAYER` `VKR_NYX`, `PLAYER` `KESTREL_ZERO`, `PLAYER` `AETHER_9`, `PLAYER` `SOVEREIGN_X`).
+  - **Moitié Droite (50%) :**
+    * Lien de navigation `← Retour à l'Arène (/)` en haut.
+    * Onglets soulignés `Connexion (Sign in)` ⇄ `Créer un compte (Register)` (l'onglet initial actif dépend de l'URL `/login` ou `/register`, avec bascule instantanée sans rechargement).
+    * Formulaire d'inscription incluant le sélecteur de rôle initial (`account_type` : `PLAYER` ou `ORGANIZER` pour la démo, tout en bloquant strictement `ADMIN` côté serveur contre le Mass-Assignment) et la classe d'arsenal préférée.
+    * Bouton `AFFICHER / MASQUER` (`SHOW / HIDE`) fonctionnel sur les champs mot de passe.
+- **Comportement à la connexion / inscription :**
+  - Dès que la connexion (classique `POST /api/auth/login` ou `/login`, ou Démo 1-clic `POST /api/auth/demo-login`) ou l'inscription (`POST /api/auth/register` ou `/register`) réussit, **le navigateur est redirigé automatiquement vers `GET /dashboard`**.
 
 ---
 
-## 4. Direction Artistique "AAA Gaming & Apple/Studio Restraint" (Pour `Front End`)
-
-### 4.1 Palette OKLCH, Typographie & Pureté Optique
-- Se référer à `DESIGN_SYSTEM.md` pour l'intégralité des variables CSS `:root` et des tokens OKLCH.
-- **Typographie Google Fonts à charger dans `<head>` :**
-  - `Syne:wght@700;800` (`--font-display`)
-  - `Instrument+Serif:ital@0;1` (`--font-serif-italic` — vrai italique obligatoire sur la ligne 2 du Hero)
-  - `Plus+Jakarta+Sans:wght@400;500;600;700` (`--font-sans`)
-  - `JetBrains+Mono:wght@400;500;600;700` (`--font-mono` avec `tabular-nums` universel)
-
-### 4.2 Header & Hero (Loi des 4 Éléments & Rythme 2 Lignes)
-- **Header (`position: fixed`, `top: 0`, `z-index: 50`) :**
-  - `background: transparent` (`rgba(0, 0, 0, 0)`) lorsque `window.scrollY === 0`, puis transition fluide vers `rgba(3, 4, 7, 0.85)` avec `backdrop-filter: blur(16px)` et `border-b border-white/[0.08]` au scroll.
-  - **Marque :** `✦ VALKYR` sur une seule ligne (sans sous-titre gris en dessous).
-  - **4 Liens de navigation non numérotés :** `Arènes`, `Live Replay`, `Arsenal`, `Classement`.
-  - **Contrôles à droite :** Switch fonctionnel `FR / EN`, lien `Connexion`, et bouton CTA à angles vifs (`0px`) `Créer une Ligue ↗`.
-- **Section Hero (`min-h-screen`, Grille Asymétrique + Artwork 8K Pur) :**
-  - Image `<img src="/assets/hero-valkyr-arena.png" fetchpriority="high" decoding="sync">` avec `filter: none`, `transform: none`, `opacity: 1`, et **zéro div d'assombrissement** par-dessus.
-  - **Les 4 éléments stricts du Hero :**
-    1. **Kicker :** `PROTOCOLE D'ESCORTE COMPÉTITIF // SÉQUESTRE ATOMIQUE 0.08`
-    2. **Titre `<h1>` sur exactement 2 lignes :**
-       - Ligne 1 (Romain Droit `Syne`) : `SOUVERAINETÉ TACTIQUE.`
-       - Ligne 2 (*Vrai Italique* `Instrument Serif` Or Souverain `#E5C158`) : `*L'Arène du Séquestre Absolu.*`
-    3. **Sous-titre (2 lignes max, 17 mots) :**
-       `Ligues privées et tournois haute fréquence. Vos enjeux verrouillés sur grand livre immuable, réglés à la milliseconde.`
-    4. **2 Boutons CTA à angles vifs (`0px`/`2px`) avec flèches :**
-       - Primaire (`bg-[#D8E5F8] text-[#030407]`) : `Rejoindre l'Arène ↗`
-       - Secondaire (`border border-white/20 text-[#F4F7FB]`) : `Voir un Match Live ▶`
-
-### 4.3 Les 5 Modules Interactifs AAA Gaming (Sous le Hero)
-1. **Fenêtre "Live Match Replay & HUD Tactique 60 FPS" + Modale Plein Écran :**
-   - Cadre `1px` (`border-white/[0.08]`) avec barre supérieure `REC ● 00:42:18 // 60 FPS // 4K CAPTURE // ANTI-CHEAT VERIFIED`.
-   - Visuel `public/assets/live-combat-hud.png` combiné à un `<canvas>` temps réel 60 FPS (balayage radar, vecteurs de trajectoires d'escouades, barres HP/Bouclier en `tabular-nums`, journal de combat en direct).
-   - Bouton `Ouvrir le Replay Tactique 4K ⤢` ouvrant une **Modale Replay Plein Écran** fonctionnelle avec timeline manipulable (`<input type="range">` ou barre interactive), contrôle Play/Pause, vitesse (`0.5x`, `1x`, `2x`) et sélecteur de POV entre 4 joueurs pros (`VKR_NYX`, `KESTREL_ZERO`, `AETHER_9`, `SOVEREIGN_X`).
-2. **Scrollytelling "Pinned Sticky" en 3 Chapitres :**
-   - Piste de scroll (`min-h-[240vh]`) avec conteneur `sticky top-24` affichant un artefact vectoriel/Canvas central (Noyau de Séquestre Cryptographique) qui évolue selon la progression du scroll natif à travers :
-     - `01. Verrouillage Séquestre Atomique` (Verrou pessimiste `SELECT ... FOR UPDATE` & isolation ACID)
-     - `02. Télémétrie Anti-Triche Temps Réel` (Validation 128-tick & empreinte déterministe du match)
-     - `03. Distribution Instantanée du Cashprize` (Prélèvement 800 bps & règlement 60 % / 30 % / 10 % en centimes entiers)
-3. **Sélecteur Interactif de Classe / Loadout (Arsenal) :**
-   - 4 onglets d'archétypes cliquables (`VANGUARD // AEGIS-01`, `SPECTRE // KESTREL-V`, `CHRONO // ORION-IX`, `VALKYRIE // SOVEREIGN-PRIME`) affichant l'artwork 4K dédié (`/assets/class-*.png`), l'arme principale, la capacité tactique, et 4 barres de statistiques animées en `tabular-nums` (`DPS`, `Mobilité`, `Armure`, `Vélocité`) + bouton permettant de définir cette classe comme Loadout actif pour l'inscription aux tournois.
-4. **Catalogue Filtrable des Tournois & Ligues Privées :**
-   - Filtres facettés instantanés : Jeu, Buy-in, Taille du Cashprize, Statut (`OPEN`, `LOCKED`, `SETTLED`, `CANCELLED`) + champ de recherche en temps réel + compteur `X ARÈNES ACTIVES` en `tabular-nums`.
-   - Cartes alignées au cordeau (hauteur égale, boutons alignés au pixel près) avec bouton d'ouverture du tiroir/modale d'inscription et de détail du tournoi.
-5. **Split-Screen Auth 50/50 & Cockpit Joueur / Organisateur :**
-   - **Split-Screen Auth 50/50 :** Bascule fluide `Connexion` (`Sign in`) ⇄ `Créer un compte` (`Create an account`), bouton `Afficher / Masquer` sur le mot de passe, et boutons de connexion rapide Démo en 1 clic (`ADMIN`, `ORGANIZER`, `PLAYER 1`, `PLAYER 2`, `PLAYER 3`) pour faciliter les tests et démonstrations.
-   - **Cockpit Joueur / Organisateur :**
-     - Sidebar avec indicateur actif vertical de `2px` (`border-l-2 border-[#E5C158]`).
-     - Carte **Solde & Séquestre** en grand format (`Solde Disponible`, `Séquestre Verrouillé`, `Gains Cumulés`, `Score ELO`) + tableau du **Grand Livre Immuable (`ledger_entries`)** avec clés d'idempotence et soldes avant/après en `tabular-nums`.
-     - **Arbre de Tournoi (Bracket Interactif)** illustrant les Quarts, Demi-finales, Petite Finale (3e place) et Grande Finale avec statuts lumineux OKLCH (`[LIVE]`, `[SETTLED]`, `[UPCOMING]`).
-     - **Modales Transactionnelles Réelles** reliées au backend : Dépôt Portefeuille, Création de Ligue/Tournoi, Inscription Buy-in, et Validation Officielle de Score / Distribution du Cashprize (60/30/10 après Rake de 8 %).
+### 2.4 Page 3 — Espace Membre & Cockpit Opérateur Protégé (`GET /dashboard` — `resources/views/dashboard/index.blade.php`, route `dashboard`)
+- **Protection :**
+  - Protégé par le middleware `auth` : tout visiteur non connecté qui tente d'accéder à `GET /dashboard` est automatiquement redirigé vers `GET /login`.
+- **Topbar & Sidebar du Cockpit :**
+  - Identité complète de l'opérateur connecté (`gamertag`, `email`, badge `role` [`ADMIN`, `ORGANIZER`, `PLAYER`], `elo_rating` en `tabular-nums`, `preferred_class`).
+  - Rappel permanent du `Solde Disponible` et du `Séquestre Verrouillé` en `tabular-nums`.
+  - Lien `← Voir l'Arène Publique (/)`.
+  - **Sélecteur rapide de profil Démo en 1 clic** dans le Cockpit (permettant de basculer entre `ADMIN`, `ORGANIZER`, `RIVAL_HOST`, `VKR_NYX`, `KESTREL_ZERO`, `AETHER_9`, `SOVEREIGN_X` et de recharger immédiatement `/dashboard` sous la nouvelle identité).
+  - Bouton explicite **`Déconnexion`** (`POST /logout` ou `/api/auth/logout` qui invalide la session et redirige vers `GET /`).
+- **Vraie Navigation par Vues/Onglets dans la Sidebar (Zéro `scrollIntoView` !) :**
+  - La Sidebar comporte **4 entrées d'onglets** avec barre verticale active `2px` Or Souverain (`#E5C158`).
+  - Cliquer sur un onglet bascule instantanément l'affichage entre **4 panneaux/vues distincts** (`#cockpit-panel-overview`, `#cockpit-panel-arenas`, `#cockpit-panel-ledger`, `#cockpit-panel-organizer` — **un seul panneau visible à la fois**, les 3 autres ayant la classe `hidden`) :
+  1. **Vue 1 (`overview`) — `Vue d'Ensemble & Portefeuille (Dépôt / Retrait)` :**
+     - Les 4 cartes KPI en grand format (`Solde Disponible`, `Séquestre Verrouillé`, `Gains Cumulés`, `Cote ELO`).
+     - Sélecteur rapide de Loadout actif (`VANGUARD`, `SPECTRE`, `CHRONO`, `VALKYRIE` via `POST /api/profile/loadout`).
+     - Formulaire / Modale de **Dépôt Instantané (`POST /api/wallets/deposit`)** avec boutons de montants rapides (`+50 €`, `+100 €`, `+250 €`, `+1 000 €`) et clé d'idempotence.
+     - Nouveau Formulaire / Modale de **Retrait Bancaire SEPA (`POST /api/wallets/withdraw`)** avec saisie du montant en euros/centimes (`amount_cents`), IBAN de destination (ex: `FR76 3000 6000 0112 3456 7890 189`), clé d'idempotence, débitant atomiquement `balance_cents` avec écriture `WITHDRAWAL` dans `ledger_entries` après verrou `SELECT ... FOR UPDATE`.
+  2. **Vue 2 (`arenas`) — `Mes Arènes, Matchs & Inscriptions` :**
+     - Liste des tournois auxquels l'opérateur connecté est inscrit (`tournament_registrations`), statut de son séquestre (`REGISTERED`, `WINNER_1ST`, `WINNER_2ND`, `WINNER_3RD`, `REFUNDED`), prochains matchs à jouer, et lien direct `Ouvrir l'Arène ↗` (`GET /tournaments/{slug}`).
+     - Catalogue rapide des tournois `OPEN` permettant de s'inscrire (Buy-in) en 1 clic ou d'accéder à la fiche détaillée `/tournaments/{slug}`.
+  3. **Vue 3 (`ledger`) — `Grand Livre Immuable (Ledger Double-Entrée)` :**
+     - Tableau complet des écritures comptables (`ledger_entries`) du portefeuille avec **filtrage instantané par type d'opération** (`ALL`, `DEPOSIT`, `WITHDRAWAL`, `BUY_IN`, `PAYOUT`, `REFUND`).
+     - Colonnes en `tabular-nums` : `ID`, `Date`, `Type`, `Description / Tournoi`, `Débit`, `Crédit`, `Solde Avant`, `Solde Après` et `Clé d'Idempotence`.
+  4. **Vue 4 (`organizer`) — `Console Organisateur & Arbitrage Officiel` :**
+     - Création d'une nouvelle Ligue / Tournoi (`POST /api/tournaments`).
+     - Liste de gestion des tournois avec indicateur de permission (`PROPRIÉTAIRE / ADMIN` vs `LECTURE SEULE`).
+     - Simulateur / Saisie des scores des matchs de l'arbre (Demi-finales, Petite Finale 3e place, Grande Finale).
+     - Exécution directe de l'**Homologation du Podium & Distribution 60/30/10 (`POST /api/tournaments/{id}/settle`)** avec aperçu mathématique en direct (`Rake 8%`, `Pool Net 92%`, `1er 60%`, `2e 30%`, `3e 10%`) et de l'**Annulation & Remboursement 100 % (`POST /api/tournaments/{id}/cancel`)**.
 
 ---
 
-## 5. Jeux de Données Initiaux Obligatoires (`DatabaseSeeder`)
-Le `DatabaseSeeder` DOIT créer des données riches, réalistes et déterministes :
-1. **Comptes Système :**
-   - `escrow.vault@valkyr.arena` (`ADMIN`, portefeuille séquestre central)
-   - `treasury@valkyr.arena` (`ADMIN`, portefeuille trésorerie plateforme)
-2. **Comptes Utilisateurs & Démo (mot de passe : `Password123!`) :**
-   - **Admin Souverain :** `admin@valkyr.arena` (`gamertag: VKR_COMMANDER`, `role: ADMIN`, `balance_cents: 500000` soit `5 000,00 €`, `elo_rating: 2450`)
-   - **Organisateur Officiel :** `organizer@valkyr.arena` (`gamertag: VKR_ARBITER`, `role: ORGANIZER`, `balance_cents: 250000` soit `2 500,00 €`, `elo_rating: 2180`)
-   - **Organisateur Secondaire (pour tests Anti-IDOR) :** `rival.org@valkyr.arena` (`gamertag: RIVAL_HOST`, `role: ORGANIZER`, `balance_cents: 100000` soit `1 000,00 €`, `elo_rating: 1920`)
-   - **Joueurs Compétitifs :**
-     * `nyx@valkyr.arena` (`gamertag: VKR_NYX`, `role: PLAYER`, `balance_cents: 150000` soit `1 500,00 €`, `elo_rating: 2390`, `preferred_class: VALKYRIE`)
-     * `kestrel@valkyr.arena` (`gamertag: KESTREL_ZERO`, `role: PLAYER`, `balance_cents: 120000` soit `1 200,00 €`, `elo_rating: 2310`, `preferred_class: SPECTRE`)
-     * `aether@valkyr.arena` (`gamertag: AETHER_9`, `role: PLAYER`, `balance_cents: 95000` soit `950,00 €`, `elo_rating: 2240`, `preferred_class: CHRONO`)
-     * `sovereign@valkyr.arena` (`gamertag: SOVEREIGN_X`, `role: PLAYER`, `balance_cents: 80000` soit `800,00 €`, `elo_rating: 2195`, `preferred_class: VANGUARD`)
-3. **Tournois Pré-configurés :**
-   - Au moins **6 tournois** couvrant les 4 jeux (`VALORANT // PROTOCOL`, `COUNTER-STRIKE 2`, `APEX // SOVEREIGN`, `LEAGUE OF LEGENDS`), différents buy-ins (`25,00 €`, `50,00 €`, `100,00 €`, `250,00 €`), formats (`5v5`, `1v1`) et statuts (`OPEN` avec participants déjà inscrits en séquestre et prêts à être rejoints ou clôturés, `IN_PROGRESS`, et `SETTLED` avec historique complet de distribution 60/30/10 et commission 8 % dans `ledger_entries`).
+### 2.5 Page 4 — Page Dédiée d'une Arène / Ligue (`GET /tournaments/{tournament:slug}` — `resources/views/tournaments/show.blade.php`, route `tournaments.show`)
+- **En-tête Complet de l'Arène :**
+  - Fil d'Ariane (`← Retour aux Arènes (/)` et `Mon Cockpit (/dashboard)` si connecté).
+  - Titre du tournoi, Jeu (`VALORANT // PROTOCOL`, `COUNTER-STRIKE 2`, `APEX // SOVEREIGN`, `LEAGUE OF LEGENDS`), Format (`5v5` / `1v1`), Badge de Statut (`OPEN`, `LOCKED`, `IN_PROGRESS`, `SETTLED`, `CANCELLED`), Gamertag de l'Organisateur.
+  - Panneau financier en `tabular-nums` : Buy-in unitaire (`entry_fee_cents`), Cagnotte Séquestrée (`escrow_pool_cents`), et décomposition mathématique exacte :
+    * **Commission Plateforme (`Rake 8% / 800 bps`)**
+    * **Pool Net Joueurs (`92%`)**
+    * **Dotation 1re Place (`60%` + reliquat d'arrondi entier)**
+    * **Dotation 2e Place (`30%`)**
+    * **Dotation 3e Place (`10%`)**
+- **Bouton d'Action Contextuel :**
+  - Si `OPEN` et connecté (non inscrit) : Bouton primaire `S'inscrire au Tournoi (Buy-in) ↗` avec sélecteur de classe d'arsenal (`VANGUARD`, `SPECTRE`, `CHRONO`, `VALKYRIE`).
+  - Si `OPEN` et non connecté (`@guest`) : Bouton `Se connecter pour rejoindre ↗` redirigeant vers `/login`.
+  - Si l'opérateur connecté est déjà inscrit : Badge émeraude/or `✓ DÉJÀ INSCRIT EN SÉQUESTRE` avec montant verrouillé et classe choisie.
+- **Arbre de Tournoi Interactif (Bracket Complet) :**
+  - Visualisation structurée des **Demi-finales (Match 1 & Match 2)**, de la **Petite Finale (Match 3e Place — 10% du Pool Net)** et de la **Grande Finale (1re Place 60% / 2e Place 30%)** avec les opérateurs inscrits, leurs cotes ELO, les scores des matchs et le podium final couronné si le statut est `SETTLED`.
+- **Liste des Opérateurs Inscrits (Roster) :**
+  - Grille/Tableau des participants inscrits avec numéro de seed, Gamertag, classe d'arsenal, cote ELO, statut (`REGISTERED`, `WINNER_1ST`, `WINNER_2ND`, `WINNER_3RD`, `REFUNDED`), montant payé en séquestre et cashprize remporté.
+- **Journal d'Audit Séquestre de l'Arène :**
+  - Tableau des écritures `ledger_entries` rattachées à ce `tournament_id` (`BUY_IN_ESCROW_DEBIT`, `BUY_IN_ESCROW_CREDIT`, `ESCROW_RELEASE_DEBIT`, `PLATFORM_RAKE_CREDIT`, `PRIZE_PAYOUT_1ST`, `PRIZE_PAYOUT_2ND`, `PRIZE_PAYOUT_3RD`, `TOURNAMENT_REFUND_*`).
+- **Panneau d'Arbitrage Officiel (visible et actif pour l'`ORGANIZER` propriétaire ou `ADMIN`) :**
+  - Formulaire de sélection du Podium (`1st`, `2nd`, `3rd`) et bouton `Homologuer & Distribuer le Cashprize (60/30/10)` (`POST /api/tournaments/{id}/settle`).
+  - Formulaire d'annulation d'urgence `Annuler l'Arène & Rembourser 100 % du Séquestre` (`POST /api/tournaments/{id}/cancel`).
+
+---
+
+## 3. Contrat Backend ⇄ Front-End & Spécification du Retrait SEPA (`withdraw`)
+
+### 3.1 Nouvel Endpoint de Retrait Bancaire SEPA (`POST /api/wallets/withdraw` & `POST /wallets/withdraw`)
+- **Validation (`WithdrawWalletRequest`) :**
+  - `amount_cents` : `required`, entier strict (`preg_match('/^-?\d+$/')`, rejetant tout `float` comme `125.50`), `min:100` (`1,00 €`), `max:50000000`.
+  - `iban` : `nullable|string|max:64` (défaut : `'FR76 3000 6000 0112 3456 7890 189'`).
+  - `idempotency_key` : `required|string|max:140`.
+- **Exécution Atomique (`EscrowLedgerService::withdraw`) :**
+  1. Ouvrir `DB::transaction()`.
+  2. Vérifier l'idempotence via `LedgerEntry::where('idempotency_key', $key)->first()` :
+     - Si la clé existe déjà pour le même `wallet_id`, `entry_type === WITHDRAWAL` et `debit_cents === $amountCents`, retourner `{ wallet, ledger_entry, idempotent_replay: true }` en `200 OK` sans re-débiter.
+     - Si la clé existe avec des paramètres différents, lever `IdempotencyConflictException` (`409 Conflict`).
+  3. Verrouiller le portefeuille de l'opérateur avec `Wallet::whereKey($userWallet->id)->lockForUpdate()->firstOrFail()`.
+  4. **Strictement APRÈS l'acquisition du verrou**, vérifier `$lockedWallet->balance_cents >= $amountCents` (sinon lever `InsufficientFundsException` ➔ `422 Unprocessable Entity`).
+  5. Débiter `$lockedWallet->balance_cents -= $amountCents` et insérer l'écriture immuable `LedgerEntry::TYPE_WITHDRAWAL` (`debit_cents = $amountCents`, `credit_cents = 0`, `balance_before_cents`, `balance_after_cents`).
+  6. Invariant global mis à jour :
+     - Pour chaque portefeuille : `wallet.balance_cents === SUM(credit_cents) - SUM(debit_cents)`.
+     - Sur l'ensemble de la plateforme : `SUM(wallets.balance_cents) === SUM(DEPOSIT.credit_cents) - SUM(WITHDRAWAL.debit_cents)`.
+
+### 3.2 Récapitulatif Complet des Routes Web & API
+| Méthode & URI | Nom de Route | Middleware | Rôle / Comportement |
+| :--- | :--- | :--- | :--- |
+| `GET /` | `home` | `web` | Page 1 : Vitrine publique 8K (Hero, Live HUD 60 FPS, Scrollytelling, Arsenal, Catalogue, Leaderboard — **sans Auth ni Cockpit en bas de page**) |
+| `GET /login` | `login` | `web`, `guest` | Page 2 : Split-Screen Auth 50/50 (onglet Connexion actif par défaut + Démo 1-clic) |
+| `GET /register` | `register` | `web`, `guest` | Page 2 : Split-Screen Auth 50/50 (onglet Créer un compte actif par défaut + Démo 1-clic) |
+| `GET /dashboard` | `dashboard` | `web`, `auth` | Page 3 : Cockpit Membre protégé avec 4 vues par onglets (`overview`, `arenas`, `ledger`, `organizer`) |
+| `GET /tournaments/{tournament:slug}` | `tournaments.show` | `web` | Page 4 : Page dédiée d'une Arène (Bracket, Roster, Audit Ledger, Inscription Buy-in & Arbitrage) |
+| `POST /api/auth/login` & `POST /login` | `api.auth.login` | `web`, `throttle:auth` | Authentification opérateur ➔ redirige vers `/dashboard` |
+| `POST /api/auth/register` & `POST /register` | `api.auth.register` | `web`, `throttle:auth` | Création de compte (`PLAYER` ou `ORGANIZER` si `account_type=ORGANIZER`, jamais `ADMIN`) ➔ redirige vers `/dashboard` |
+| `POST /api/auth/demo-login` & `POST /demo-login` | `api.auth.demo` | `web`, `throttle:auth` | Connexion rapide Démo 1-clic (liste blanche) ➔ redirige vers `/dashboard` |
+| `POST /api/auth/logout` & `POST /logout` | `api.auth.logout` / `logout` | `web` | Déconnexion ➔ redirige vers `/` |
+| `POST /api/wallets/deposit` & `POST /wallets/deposit` | `api.wallets.deposit` | `web`, `auth`, `throttle:financial` | Dépôt en centimes entiers avec clé d'idempotence |
+| `POST /api/wallets/withdraw` & `POST /wallets/withdraw` | `api.wallets.withdraw` | `web`, `auth`, `throttle:financial` | Retrait bancaire SEPA en centimes entiers avec verrou pessimiste & clé d'idempotence |
+| `GET /api/wallets/{wallet}` | `api.wallets.show` | `web`, `auth` | Inspection d'un portefeuille (protégé par `WalletPolicy::view` Anti-IDOR) |
+| `GET /api/tournaments` | `api.tournaments.index` | `web` | Catalogue filtrable en JSON |
+| `POST /api/tournaments` & `POST /tournaments` | `api.tournaments.store` | `web`, `auth`, `throttle:financial` | Création de tournoi (`ORGANIZER` ou `ADMIN` via `TournamentPolicy::create`) |
+| `POST /api/tournaments/{tournament}/register` | `api.tournaments.register` | `web`, `auth`, `throttle:financial` | Buy-in atomique vers séquestre (`ORDER BY id ASC` + `lockForUpdate()`) |
+| `POST /api/tournaments/{tournament}/settle` | `api.tournaments.settle` | `web`, `auth`, `throttle:financial` | Clôture officielle : Rake 8 % (`800 bps`) + Distribution 60 % / 30 % / 10 % (`TournamentPolicy::settle`) |
+| `POST /api/tournaments/{tournament}/cancel` | `api.tournaments.cancel` | `web`, `auth`, `throttle:financial` | Annulation & Remboursement 100 % du séquestre (`TournamentPolicy::cancel`) |

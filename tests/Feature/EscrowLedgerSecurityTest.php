@@ -55,6 +55,7 @@ final class EscrowLedgerSecurityTest extends TestCase
             'password_confirmation' => 'Password123!',
             'preferred_class' => 'SPECTRE',
             'role' => 'ADMIN',
+            'account_type' => 'ADMIN',
             'elo_rating' => 9999,
             'balance_cents' => 5000000,
         ]);
@@ -525,5 +526,156 @@ final class EscrowLedgerSecurityTest extends TestCase
         $sqliRes->assertOk()
             ->assertJsonPath('total_count', 0);
     }
-}
 
+    public function test_wallet_sepa_withdrawal_enforces_integer_cents_post_lock_sufficiency_idempotency_and_conservation(): void
+    {
+        $ledgerService = app(EscrowLedgerService::class);
+        $organizer = User::factory()->organizer()->create();
+        $player = User::factory()->player()->create();
+
+        // 0. Unauthenticated guest cannot withdraw -> 401 Unauthorized
+        $this->postJson('/api/wallets/withdraw', [
+            'amount_cents' => 5000,
+            'idempotency_key' => 'wd-guest-attempt',
+        ])->assertUnauthorized();
+
+        $ledgerService->deposit($player, 30000, 'dep-before-withdraw-001'); // 300.00 EUR
+
+        // 1. Reject float withdrawal amount
+        $this->actingAs($player)->postJson('/api/wallets/withdraw', [
+            'amount_cents' => 125.75,
+            'iban' => 'FR76 3000 6000 0112 3456 7890 189',
+            'idempotency_key' => 'wd-float-attempt',
+        ])->assertStatus(422);
+
+        // 2. Reject negative and zero withdrawal amounts
+        $this->actingAs($player)->postJson('/api/wallets/withdraw', [
+            'amount_cents' => -5000,
+            'idempotency_key' => 'wd-neg-attempt',
+        ])->assertStatus(422);
+
+        $this->actingAs($player)->postJson('/api/wallets/withdraw', [
+            'amount_cents' => 0,
+            'idempotency_key' => 'wd-zero-attempt',
+        ])->assertStatus(422);
+
+        // 3. Reject overdraft withdrawal exceeding available balance_cents (350.00 EUR > 300.00 EUR)
+        $this->actingAs($player)->postJson('/api/wallets/withdraw', [
+            'amount_cents' => 35000,
+            'idempotency_key' => 'wd-overdraft-attempt',
+        ])->assertStatus(422);
+
+        // 4. Valid SEPA withdrawal of 120.00 EUR (12000 cents)
+        $withdrawRes = $this->actingAs($player)->postJson('/api/wallets/withdraw', [
+            'amount_cents' => 12000,
+            'iban' => 'FR76 3000 6000 0112 3456 7890 189',
+            'idempotency_key' => 'wd-valid-sepa-001',
+        ]);
+
+        $withdrawRes->assertOk()
+            ->assertJsonPath('wallet.balance_cents', 18000)
+            ->assertJsonPath('ledger_entry.entry_type', LedgerEntry::TYPE_WITHDRAWAL)
+            ->assertJsonPath('ledger_entry.debit_cents', 12000)
+            ->assertJsonPath('idempotent_replay', false);
+
+        // 5. Idempotent replay with same key & amount -> 200 OK without double debit
+        $replayRes = $this->actingAs($player)->postJson('/api/wallets/withdraw', [
+            'amount_cents' => 12000,
+            'iban' => 'FR76 3000 6000 0112 3456 7890 189',
+            'idempotency_key' => 'wd-valid-sepa-001',
+        ]);
+
+        $replayRes->assertOk()
+            ->assertJsonPath('wallet.balance_cents', 18000)
+            ->assertJsonPath('idempotent_replay', true);
+
+        // 6. Reusing key with different amount -> 409 Conflict
+        $this->actingAs($player)->postJson('/api/wallets/withdraw', [
+            'amount_cents' => 5000,
+            'idempotency_key' => 'wd-valid-sepa-001',
+        ])->assertStatus(409);
+
+        // 7. Locked Escrow Protection: funds locked in tournament escrow (10000 cents) CANNOT be withdrawn via SEPA
+        $tournament = Tournament::create([
+            'organizer_id' => $organizer->id,
+            'slug' => 'sepa-escrow-lock-test',
+            'title' => 'SEPA ESCROW LOCK TEST',
+            'game' => 'VALORANT // PROTOCOL',
+            'format' => '1v1',
+            'status' => Tournament::STATUS_OPEN,
+            'entry_fee_cents' => 10000,
+            'escrow_pool_cents' => 0,
+            'sponsored_guarantee_cents' => 0,
+            'rake_bps' => 800,
+            'platform_rake_cents' => 0,
+            'net_prize_pool_cents' => 0,
+            'max_participants' => 4,
+            'registered_count' => 0,
+        ]);
+
+        $ledgerService->registerForTournament($player, $tournament, 'reg-before-sepa-lock-001');
+        // Available balance is now 18000 - 10000 = 8000 cents; locked_escrow_cents = 10000 cents.
+        $this->assertSame(8000, $player->wallet->fresh()->balance_cents);
+        $this->assertSame(10000, $player->wallet->fresh()->locked_escrow_cents);
+
+        // Attempting to withdraw 10000 cents (which exceeds 8000 available balance) MUST fail with 422
+        $this->actingAs($player)->postJson('/api/wallets/withdraw', [
+            'amount_cents' => 10000,
+            'idempotency_key' => 'wd-attempt-locked-escrow-theft',
+        ])->assertStatus(422);
+
+        $this->assertSame(8000, $player->wallet->fresh()->balance_cents);
+        $this->assertSame(10000, $player->wallet->fresh()->locked_escrow_cents);
+
+        // 8. Verify wallet and platform conservation invariants across ALL wallets
+        foreach (Wallet::all() as $wallet) {
+            $this->assertTrue($ledgerService->verifyWalletLedgerInvariant($wallet));
+        }
+
+        $totalDeposits = (int) LedgerEntry::where('entry_type', LedgerEntry::TYPE_DEPOSIT)->sum('credit_cents');
+        $totalWithdrawals = (int) LedgerEntry::where('entry_type', LedgerEntry::TYPE_WITHDRAWAL)->sum('debit_cents');
+        $sumAllWallets = (int) Wallet::sum('balance_cents');
+
+        $this->assertSame($totalDeposits - $totalWithdrawals, $sumAllWallets);
+    }
+
+    public function test_multi_page_routing_auth_redirects_and_arena_detail_pages(): void
+    {
+        $this->seed(DatabaseSeeder::class);
+
+        // 1. Guest accessing protected /dashboard is redirected to /login
+        $this->get('/dashboard')->assertRedirect('/login');
+
+        // 2. Guest can access /login and /register dedicated pages
+        $this->get('/login')->assertOk();
+        $this->get('/register')->assertOk();
+
+        // 3. Guest can access dedicated tournament page by slug (/tournaments/{slug}) and JSON API
+        $this->get('/tournaments/valkyr-sovereign-series-s04')->assertOk();
+        $this->getJson('/api/tournaments/valkyr-sovereign-series-s04')
+            ->assertOk()
+            ->assertJsonPath('tournament.slug', 'valkyr-sovereign-series-s04')
+            ->assertJsonPath('financial_breakdown.rake_bps', 800);
+
+        // 4. Demo login redirects web requests to /dashboard and returns redirect='/dashboard' in JSON
+        $demoRes = $this->postJson('/api/auth/demo-login', [
+            'email' => 'nyx@valkyr.arena',
+        ]);
+        $demoRes->assertOk()
+            ->assertJsonPath('redirect', '/dashboard');
+
+        // 5. Authenticated user accessing /login or /register is redirected to /dashboard
+        $nyx = User::where('email', 'nyx@valkyr.arena')->firstOrFail();
+        $this->actingAs($nyx)->get('/login')->assertRedirect('/dashboard');
+        $this->actingAs($nyx)->get('/register')->assertRedirect('/dashboard');
+
+        // 6. Authenticated user can access /dashboard and tabs
+        $this->actingAs($nyx)->get('/dashboard')->assertOk();
+        $this->actingAs($nyx)->get('/dashboard?tab=ledger')->assertOk();
+
+        // 7. Logout redirects to /
+        $this->actingAs($nyx)->postJson('/api/auth/logout')
+            ->assertOk()
+            ->assertJsonPath('redirect', '/');
+    }
+}

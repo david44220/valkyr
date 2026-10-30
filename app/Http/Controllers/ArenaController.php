@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Models\LedgerEntry;
 use App\Models\Tournament;
+use App\Models\TournamentRegistration;
 use App\Models\User;
 use App\Services\EscrowLedgerService;
 use Illuminate\Contracts\View\View;
@@ -16,7 +17,46 @@ use Illuminate\Validation\Rule;
 
 final class ArenaController extends Controller
 {
+    /**
+     * Page 1 — Public Showcase & Discovery (GET /)
+     */
     public function index(Request $request, EscrowLedgerService $ledgerService): View|JsonResponse
+    {
+        $payload = $this->buildArenaPayload($request, $ledgerService);
+
+        if ($request->is('api/*')) {
+            return response()->json($payload);
+        }
+
+        return view('welcome', $payload);
+    }
+
+    /**
+     * Page 3 — Authenticated Operator Cockpit & Member Space (GET /dashboard)
+     */
+    public function dashboard(Request $request, EscrowLedgerService $ledgerService): View|JsonResponse
+    {
+        $payload = $this->buildArenaPayload($request, $ledgerService);
+
+        $requestedTab = strtolower(trim((string) $request->query('tab', 'overview')));
+        if (! in_array($requestedTab, ['overview', 'arenas', 'ledger', 'organizer'], true)) {
+            $requestedTab = 'overview';
+        }
+        $payload['activeTab'] = $requestedTab;
+
+        if ($request->is('api/*')) {
+            return response()->json($payload);
+        }
+
+        return view('dashboard.index', $payload);
+    }
+
+    /**
+     * Build shared hydrated state for Public Showcase, Member Cockpit, and /api/state.
+     *
+     * @return array<string, mixed>
+     */
+    private function buildArenaPayload(Request $request, EscrowLedgerService $ledgerService): array
     {
         $tournaments = Tournament::with([
             'organizer',
@@ -33,17 +73,21 @@ final class ArenaController extends Controller
         $currentUser = $request->user();
         $wallet = null;
         $ledgerEntries = collect();
+        $myRegistrations = collect();
 
         if ($currentUser !== null) {
             $wallet = $ledgerService->getOrCreateWallet($currentUser);
-            $currentUser->load(['registrations.tournament']);
+            $currentUser->load(['registrations.tournament.organizer']);
+            $myRegistrations = TournamentRegistration::with(['tournament.organizer', 'tournament.registrations.user'])
+                ->where('user_id', $currentUser->id)
+                ->orderByDesc('id')
+                ->get();
             $ledgerEntries = LedgerEntry::with(['tournament', 'actor'])
                 ->where('wallet_id', $wallet->id)
                 ->orderByDesc('id')
-                ->limit(40)
+                ->limit(60)
                 ->get();
         } else {
-            // Hydrate recent public ledger entries for live cockpit preview when unauthenticated
             $ledgerEntries = LedgerEntry::with(['tournament', 'actor', 'wallet.user'])
                 ->orderByDesc('id')
                 ->limit(25)
@@ -60,14 +104,7 @@ final class ArenaController extends Controller
             ->get();
 
         $demoUsers = User::with('wallet')
-            ->whereIn('email', [
-                'admin@valkyr.arena',
-                'organizer@valkyr.arena',
-                'nyx@valkyr.arena',
-                'kestrel@valkyr.arena',
-                'aether@valkyr.arena',
-                'sovereign@valkyr.arena',
-            ])
+            ->whereIn('email', AuthController::ALLOWED_DEMO_EMAILS)
             ->get()
             ->keyBy('email');
 
@@ -88,26 +125,16 @@ final class ArenaController extends Controller
             'rake_bps' => Tournament::DEFAULT_RAKE_BPS,
         ];
 
-        if ($request->is('api/*')) {
-            return response()->json([
-                'tournaments' => $tournaments,
-                'currentUser' => $currentUser,
-                'wallet' => $wallet,
-                'ledgerEntries' => $ledgerEntries,
-                'leaderboard' => $leaderboard,
-                'platformStats' => $platformStats,
-            ]);
-        }
-
-        return view('welcome', [
+        return [
             'tournaments' => $tournaments,
             'currentUser' => $currentUser,
             'wallet' => $wallet,
             'ledgerEntries' => $ledgerEntries,
+            'myRegistrations' => $myRegistrations,
             'leaderboard' => $leaderboard,
             'demoUsers' => $demoUsers,
             'platformStats' => $platformStats,
-        ]);
+        ];
     }
 
     public function updateLoadout(Request $request): JsonResponse|RedirectResponse

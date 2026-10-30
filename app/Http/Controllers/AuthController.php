@@ -6,8 +6,10 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\LoginRequest;
 use App\Http\Requests\RegisterRequest;
+use App\Models\Tournament;
 use App\Models\User;
 use App\Services\EscrowLedgerService;
+use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -25,17 +27,62 @@ final class AuthController extends Controller
         'sovereign@valkyr.arena',
     ];
 
+    public function showLogin(): View
+    {
+        return $this->renderAuthView('login');
+    }
+
+    public function showRegister(): View
+    {
+        return $this->renderAuthView('register');
+    }
+
+    private function renderAuthView(string $initialTab): View
+    {
+        $demoUsers = User::with('wallet')
+            ->whereIn('email', self::ALLOWED_DEMO_EMAILS)
+            ->get()
+            ->keyBy('email');
+
+        $platformStats = [
+            'total_escrow_locked_cents' => (int) Tournament::whereIn('status', [
+                Tournament::STATUS_OPEN,
+                Tournament::STATUS_LOCKED,
+                Tournament::STATUS_IN_PROGRESS,
+            ])->sum('escrow_pool_cents'),
+            'total_prizes_distributed_cents' => (int) Tournament::where('status', Tournament::STATUS_SETTLED)->sum('net_prize_pool_cents'),
+            'active_arenas_count' => (int) Tournament::whereIn('status', [
+                Tournament::STATUS_OPEN,
+                Tournament::STATUS_LOCKED,
+                Tournament::STATUS_IN_PROGRESS,
+            ])->count(),
+            'settled_arenas_count' => (int) Tournament::where('status', Tournament::STATUS_SETTLED)->count(),
+            'rake_bps' => Tournament::DEFAULT_RAKE_BPS,
+        ];
+
+        return view('auth.login', [
+            'initialTab' => $initialTab,
+            'demoUsers' => $demoUsers,
+            'platformStats' => $platformStats,
+        ]);
+    }
+
     public function register(RegisterRequest $request, EscrowLedgerService $ledgerService): JsonResponse|RedirectResponse
     {
         $validated = $request->validated();
 
-        // Force role to PLAYER and default ELO to 1500 regardless of any extra fields sent in payload (Anti-Mass Assignment)
+        // Allow optional account_type = ORGANIZER for demo onboarding, but strictly block ADMIN or raw 'role' injection (Anti-Mass Assignment)
+        $requestedAccountType = strtoupper(trim((string) ($validated['account_type'] ?? User::ROLE_PLAYER)));
+        $assignedRole = $requestedAccountType === User::ROLE_ORGANIZER
+            ? User::ROLE_ORGANIZER
+            : User::ROLE_PLAYER;
+
         $user = User::create([
             'name' => (string) $validated['name'],
             'gamertag' => strtoupper(trim((string) $validated['gamertag'])),
             'email' => strtolower(trim((string) $validated['email'])),
             'password' => (string) $validated['password'],
-            'role' => User::ROLE_PLAYER,
+            'role' => $assignedRole,
             'elo_rating' => 1500,
             'preferred_class' => isset($validated['preferred_class']) ? (string) $validated['preferred_class'] : 'VANGUARD',
         ]);
@@ -52,10 +99,11 @@ final class AuthController extends Controller
                 'message' => 'Opérateur enregistré et portefeuille séquestre initialisé.',
                 'user' => $user->load('wallet'),
                 'wallet' => $wallet,
+                'redirect' => route('dashboard', absolute: false),
             ], 201);
         }
 
-        return redirect()->route('home')->with('status', 'Bienvenue dans VALKYR // ARENA, '.$user->gamertag.'.');
+        return redirect()->route('dashboard')->with('status', 'Bienvenue dans VALKYR // ARENA, '.$user->gamertag.'.');
     }
 
     public function login(LoginRequest $request, EscrowLedgerService $ledgerService): JsonResponse|RedirectResponse
@@ -104,10 +152,11 @@ final class AuthController extends Controller
                 'message' => 'Connexion tactique établie.',
                 'user' => $user->load('wallet'),
                 'wallet' => $wallet,
+                'redirect' => route('dashboard', absolute: false),
             ]);
         }
 
-        return redirect()->route('home')->with('status', 'Session active : '.$user->gamertag);
+        return redirect()->route('dashboard')->with('status', 'Session active : '.$user->gamertag);
     }
 
     public function demoLogin(Request $request, EscrowLedgerService $ledgerService): JsonResponse|RedirectResponse
@@ -150,10 +199,11 @@ final class AuthController extends Controller
                 'message' => "Basculé sur le profil démo {$user->gamertag} ({$user->role}).",
                 'user' => $user->load('wallet'),
                 'wallet' => $wallet,
+                'redirect' => route('dashboard', absolute: false),
             ]);
         }
 
-        return redirect()->route('home')->with('status', "Profil actif : {$user->gamertag} [{$user->role}]");
+        return redirect()->route('dashboard')->with('status', "Profil actif : {$user->gamertag} [{$user->role}]");
     }
 
     public function logout(Request $request): JsonResponse|RedirectResponse
@@ -168,6 +218,7 @@ final class AuthController extends Controller
         if ($request->is('api/*') || $request->expectsJson()) {
             return response()->json([
                 'message' => 'Session déconnectée.',
+                'redirect' => route('home', absolute: false),
             ]);
         }
 

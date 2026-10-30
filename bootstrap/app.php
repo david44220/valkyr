@@ -16,6 +16,8 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->append(SecurityHeadersMiddleware::class);
+        $middleware->redirectGuestsTo('/login');
+        $middleware->redirectUsersTo('/dashboard');
         $middleware->validateCsrfTokens(except: [
             'api/*',
         ]);

@@ -26,6 +26,7 @@ final class RegisterRequest extends FormRequest
             'email' => ['required', 'string', 'email', 'max:190', 'unique:users,email'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
             'preferred_class' => ['nullable', 'string', Rule::in(User::ALLOWED_CLASSES)],
+            'account_type' => ['nullable', 'string', 'max:24'],
         ];
     }
 }

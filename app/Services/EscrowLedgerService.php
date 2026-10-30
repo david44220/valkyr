@@ -152,6 +152,95 @@ final class EscrowLedgerService
     }
 
     /**
+     * Withdraw integer cents from a user's wallet via SEPA Instant with strict idempotency,
+     * pessimistic row locking, and post-lock sufficiency check.
+     *
+     * @return array{wallet: Wallet, ledger_entry: LedgerEntry, idempotent_replay: bool}
+     */
+    public function withdraw(
+        User $user,
+        int $amountCents,
+        string $idempotencyKey,
+        string $iban = 'FR76 3000 6000 0112 3456 7890 189',
+        string $description = 'Retrait bancaire SEPA Instant depuis portefeuille VALKYR // ARENA'
+    ): array {
+        $trimmedKey = trim($idempotencyKey);
+        if ($trimmedKey === '') {
+            throw new InvalidFinancialOperationException('La clé d\'idempotence est obligatoire pour le retrait.');
+        }
+
+        if ($amountCents < 100 || $amountCents > 50_000_000) {
+            throw new InvalidFinancialOperationException('Le montant du retrait en centimes doit être un entier compris entre 100 (1,00 €) et 50 000 000 centimes.');
+        }
+
+        $initialWallet = $this->getOrCreateWallet($user);
+
+        return DB::transaction(function () use ($user, $initialWallet, $amountCents, $trimmedKey, $iban, $description): array {
+            $existingEntry = LedgerEntry::where('idempotency_key', $trimmedKey)->first();
+            if ($existingEntry !== null) {
+                if (
+                    (int) $existingEntry->wallet_id === (int) $initialWallet->id
+                    && $existingEntry->entry_type === LedgerEntry::TYPE_WITHDRAWAL
+                    && (int) $existingEntry->debit_cents === $amountCents
+                ) {
+                    $freshWallet = Wallet::whereKey($initialWallet->id)->firstOrFail();
+
+                    return [
+                        'wallet' => $freshWallet,
+                        'ledger_entry' => $existingEntry,
+                        'idempotent_replay' => true,
+                    ];
+                }
+
+                throw new IdempotencyConflictException('Cette clé d\'idempotence a déjà été utilisée pour une transaction différente.');
+            }
+
+            $lockedWallet = Wallet::whereKey($initialWallet->id)->lockForUpdate()->firstOrFail();
+
+            // Strictly AFTER acquiring pessimistic lock: verify available balance_cents >= amountCents
+            if ((int) $lockedWallet->balance_cents < $amountCents) {
+                throw new InsufficientFundsException(
+                    sprintf(
+                        'Solde disponible insuffisant (%s) pour exécuter le retrait SEPA de %s.',
+                        Wallet::formatCents((int) $lockedWallet->balance_cents),
+                        Wallet::formatCents($amountCents)
+                    )
+                );
+            }
+
+            $balanceBefore = (int) $lockedWallet->balance_cents;
+            $balanceAfter = $balanceBefore - $amountCents;
+
+            $lockedWallet->balance_cents = $balanceAfter;
+            $lockedWallet->save();
+
+            $entry = LedgerEntry::create([
+                'wallet_id' => $lockedWallet->id,
+                'tournament_id' => null,
+                'actor_id' => $user->id,
+                'entry_type' => LedgerEntry::TYPE_WITHDRAWAL,
+                'debit_cents' => $amountCents,
+                'credit_cents' => 0,
+                'balance_before_cents' => $balanceBefore,
+                'balance_after_cents' => $balanceAfter,
+                'idempotency_key' => $trimmedKey,
+                'description' => $description,
+                'metadata' => [
+                    'iban' => $iban,
+                    'currency' => $lockedWallet->currency,
+                    'gamertag' => $user->gamertag,
+                ],
+            ]);
+
+            return [
+                'wallet' => $lockedWallet,
+                'ledger_entry' => $entry,
+                'idempotent_replay' => false,
+            ];
+        });
+    }
+
+    /**
      * Atomically lock player & escrow wallets in ascending ID order, verify balance after lock,
      * and move entry_fee_cents into escrow via symmetric double-entry ledger records.
      *
