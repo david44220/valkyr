@@ -732,8 +732,8 @@
                     </h2>
                 </div>
 
-                <div class="overflow-x-auto border border-white/[0.08] bg-[#0C1018]">
-                    <table class="w-full min-w-[760px] text-left border-collapse tabular-nums">
+                <div class="w-full overflow-x-auto border border-white/[0.08] bg-[#0C1018]">
+                    <table class="w-full min-w-[820px] text-left border-collapse tabular-nums">
                         <thead>
                             <tr class="border-b border-white/10 bg-[#080B11] font-mono text-[11px] uppercase tracking-wider text-[#64748B] whitespace-nowrap tabular-nums">
                                 <th class="px-4 py-3.5 whitespace-nowrap tabular-nums">RANG</th>
@@ -742,7 +742,7 @@
                                 <th class="px-4 py-3.5 whitespace-nowrap tabular-nums">CLASSE ACTIVE</th>
                                 <th class="px-4 py-3.5 text-right whitespace-nowrap tabular-nums">COTE ELO / MMR</th>
                                 <th class="px-4 py-3.5 text-right whitespace-nowrap tabular-nums">GAINS CUMULÉS</th>
-                                <th class="px-4 py-3.5 text-right whitespace-nowrap tabular-nums">ENJEU SÉQUESTRÉ</th>
+                                <th class="pl-4 pr-6 py-3.5 text-right whitespace-nowrap tabular-nums">ENJEU SÉQUESTRÉ</th>
                             </tr>
                         </thead>
                         <tbody id="leaderboard-tbody" class="whitespace-nowrap tabular-nums">

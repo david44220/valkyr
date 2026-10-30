@@ -616,17 +616,17 @@
                 </span>
             </div>
 
-            <div class="overflow-x-auto border border-white/[0.08] bg-[#080B11]">
-                <table class="w-full min-w-[780px] text-left border-collapse font-mono text-xs tabular-nums">
+            <div class="w-full overflow-x-auto border border-white/[0.08] bg-[#080B11]">
+                <table class="w-full min-w-[820px] text-left border-collapse font-mono text-xs tabular-nums">
                     <thead>
                         <tr class="border-b border-white/10 bg-[#0C1018] text-[10px] uppercase tracking-wider text-[#64748B] whitespace-nowrap tabular-nums">
                             <th class="px-4 py-3 whitespace-nowrap tabular-nums">ID</th>
                             <th class="px-4 py-3 whitespace-nowrap tabular-nums">TYPE OPÉRATION</th>
-                            <th class="px-4 py-3 whitespace-nowrap tabular-nums">DESCRIPTION</th>
+                            <th class="px-4 py-3 min-w-[220px] max-w-[300px] whitespace-nowrap tabular-nums">DESCRIPTION</th>
                             <th class="px-4 py-3 text-right whitespace-nowrap tabular-nums">DÉBIT</th>
                             <th class="px-4 py-3 text-right whitespace-nowrap tabular-nums">CRÉDIT</th>
                             <th class="px-4 py-3 text-right whitespace-nowrap tabular-nums">SOLDE APRÈS</th>
-                            <th class="px-4 py-3 whitespace-nowrap tabular-nums">CLÉ D'IDEMPOTENCE</th>
+                            <th class="pl-4 pr-6 py-3 whitespace-nowrap tabular-nums">CLÉ D'IDEMPOTENCE</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-white/[0.05] whitespace-nowrap tabular-nums">
@@ -638,26 +638,26 @@
                                         {{ $entry->entry_type }}
                                     </span>
                                 </td>
-                                <td class="px-4 py-3 text-[#F4F7FB] whitespace-nowrap tabular-nums max-w-xs truncate" title="{{ $entry->description }}">{{ $entry->description }}</td>
+                                <td class="px-4 py-3 text-[#F4F7FB] min-w-[220px] max-w-[300px] truncate whitespace-nowrap tabular-nums" title="{{ $entry->description }}">{{ $entry->description }}</td>
                                 <td class="px-4 py-3 text-right whitespace-nowrap tabular-nums">
                                     @if($entry->debit_cents > 0)
                                         <span class="text-[#EF4444] whitespace-nowrap tabular-nums">-{{ \App\Models\Wallet::formatCents($entry->debit_cents) }}</span>
                                     @else
-                                        <span class="text-[#64748B] whitespace-nowrap tabular-nums">0,00 €</span>
+                                        <span class="text-[#64748B] whitespace-nowrap tabular-nums">0,00&nbsp;€</span>
                                     @endif
                                 </td>
                                 <td class="px-4 py-3 text-right whitespace-nowrap tabular-nums">
                                     @if($entry->credit_cents > 0)
                                         <span class="text-[#10B981] whitespace-nowrap tabular-nums">+{{ \App\Models\Wallet::formatCents($entry->credit_cents) }}</span>
                                     @else
-                                        <span class="text-[#64748B] whitespace-nowrap tabular-nums">0,00 €</span>
+                                        <span class="text-[#64748B] whitespace-nowrap tabular-nums">0,00&nbsp;€</span>
                                     @endif
                                 </td>
                                 <td class="px-4 py-3 text-right text-[#D8E5F8] font-bold whitespace-nowrap tabular-nums">
-                                    {{ \App\Models\Wallet::formatCents($entry->balance_after_cents) }}
+                                    <span class="whitespace-nowrap tabular-nums">{{ \App\Models\Wallet::formatCents($entry->balance_after_cents) }}</span>
                                 </td>
-                                <td class="px-4 py-3 text-[11px] text-[#64748B] whitespace-nowrap tabular-nums truncate max-w-[200px]" title="{{ $entry->idempotency_key }}">
-                                    {{ $entry->idempotency_key }}
+                                <td class="pl-4 pr-6 py-3 text-[11px] text-[#64748B] whitespace-nowrap tabular-nums" title="{{ $entry->idempotency_key }}">
+                                    <code class="px-1.5 py-0.5 bg-[#0C1018] border border-white/[0.06] text-[#94A3B8] whitespace-nowrap tabular-nums">{{ $entry->idempotency_key }}</code>
                                 </td>
                             </tr>
                         @empty

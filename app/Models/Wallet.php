@@ -76,6 +76,6 @@ class Wallet extends Model
         $euros = intdiv($abs, 100);
         $rem = $abs % 100;
 
-        return sprintf('%s%s,%02d €', $sign, number_format($euros, 0, ',', ' '), $rem);
+        return sprintf("%s%s,%02d\u{00A0}€", $sign, number_format($euros, 0, ',', "\u{00A0}"), $rem);
     }
 }

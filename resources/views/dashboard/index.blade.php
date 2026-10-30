@@ -221,7 +221,7 @@
             <!-- =============================================================
                  MAIN WORKSPACE (9 COLS) — 4 DISTINCT PANELS (ONLY 1 VISIBLE)
                  ============================================================= -->
-            <div class="lg:col-span-9 p-6 sm:p-8">
+            <div class="lg:col-span-9 min-w-0 p-6 sm:p-8">
 
                 <!-- =========================================================
                      PANEL 1: VUE D'ENSEMBLE, DÉPÔT & RETRAIT SEPA (#cockpit-panel-overview)
@@ -229,7 +229,7 @@
                 <section
                     id="cockpit-panel-overview"
                     data-cockpit-panel="overview"
-                    class="{{ $activeTabKey === 'overview' ? '' : 'hidden' }} space-y-8"
+                    class="{{ $activeTabKey === 'overview' ? '' : 'hidden' }} space-y-8 min-w-0"
                 >
                     <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-white/[0.08] pb-5">
                         <div>
@@ -621,18 +621,18 @@
                     </div>
 
                     <!-- Ledger Table -->
-                    <div class="overflow-x-auto border border-white/[0.08] bg-[#080B11]">
+                    <div class="w-full overflow-x-auto border border-white/[0.08] bg-[#080B11]">
                         <table class="w-full min-w-[820px] text-left border-collapse tabular-nums">
                             <thead>
                                 <tr class="border-b border-white/10 bg-[#0C1018] font-mono text-[10px] uppercase tracking-wider text-[#64748B] whitespace-nowrap tabular-nums">
                                     <th class="px-3.5 py-3 whitespace-nowrap tabular-nums">ID</th>
                                     <th class="px-3.5 py-3 whitespace-nowrap tabular-nums">TYPE OPÉRATION</th>
-                                    <th class="px-3.5 py-3 whitespace-nowrap tabular-nums">DESCRIPTION</th>
+                                    <th class="px-3.5 py-3 min-w-[220px] max-w-[300px] whitespace-nowrap tabular-nums">DESCRIPTION</th>
                                     <th class="px-3.5 py-3 text-right whitespace-nowrap tabular-nums">SOLDE AVANT</th>
                                     <th class="px-3.5 py-3 text-right whitespace-nowrap tabular-nums">DÉBIT</th>
                                     <th class="px-3.5 py-3 text-right whitespace-nowrap tabular-nums">CRÉDIT</th>
                                     <th class="px-3.5 py-3 text-right whitespace-nowrap tabular-nums">SOLDE APRÈS</th>
-                                    <th class="px-3.5 py-3 whitespace-nowrap tabular-nums">CLÉ D'IDEMPOTENCE</th>
+                                    <th class="pl-3.5 pr-6 py-3 whitespace-nowrap tabular-nums">CLÉ D'IDEMPOTENCE</th>
                                 </tr>
                             </thead>
                             <tbody id="ledger-entries-tbody" class="divide-y divide-white/[0.05] font-mono text-xs whitespace-nowrap tabular-nums">

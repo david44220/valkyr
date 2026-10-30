@@ -69,8 +69,8 @@
             const euroFormatted = euros.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
             return `${sign}€${euroFormatted}.${rem}`;
         }
-        const euroFormatted = euros.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-        return `${sign}${euroFormatted},${rem} €`;
+        const euroFormatted = euros.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '\u00A0');
+        return `${sign}${euroFormatted},${rem}\u00A0€`;
     }
 
     function generateIdempotencyKey(prefix) {
@@ -1592,11 +1592,11 @@
                         const debitStr =
                             Number(entry.debit_cents) > 0
                                 ? `<span class="text-[#EF4444] whitespace-nowrap tabular-nums">-${formatCents(entry.debit_cents)}</span>`
-                                : '<span class="text-[#64748B] whitespace-nowrap tabular-nums">0,00 €</span>';
+                                : '<span class="text-[#64748B] whitespace-nowrap tabular-nums">0,00\u00A0€</span>';
                         const creditStr =
                             Number(entry.credit_cents) > 0
                                 ? `<span class="text-[#10B981] whitespace-nowrap tabular-nums">+${formatCents(entry.credit_cents)}</span>`
-                                : '<span class="text-[#64748B] whitespace-nowrap tabular-nums">0,00 €</span>';
+                                : '<span class="text-[#64748B] whitespace-nowrap tabular-nums">0,00\u00A0€</span>';
 
                         return `
                             <tr class="border-b border-white/[0.05] hover:bg-[#121824]/60 transition whitespace-nowrap tabular-nums">
@@ -1604,19 +1604,19 @@
                                 <td class="px-3.5 py-3 whitespace-nowrap tabular-nums">
                                     <span class="px-2 py-0.5 text-[10px] font-mono font-semibold border whitespace-nowrap tabular-nums ${typeBadgeCls}">${escapeHtml(entry.entry_type)}</span>
                                 </td>
-                                <td class="px-3.5 py-3 text-xs text-[#F4F7FB] whitespace-nowrap tabular-nums max-w-xs truncate" title="${escapeHtml(entry.description)}">
+                                <td class="px-3.5 py-3 text-xs text-[#F4F7FB] min-w-[220px] max-w-[300px] truncate whitespace-nowrap tabular-nums" title="${escapeHtml(entry.description)}">
                                     ${escapeHtml(entry.description)}
                                 </td>
                                 <td class="px-3.5 py-3 text-xs font-mono text-right text-[#94A3B8] whitespace-nowrap tabular-nums">
-                                    ${formatCents(entry.balance_before_cents)}
+                                    <span class="whitespace-nowrap tabular-nums">${formatCents(entry.balance_before_cents)}</span>
                                 </td>
                                 <td class="px-3.5 py-3 text-xs font-mono text-right whitespace-nowrap tabular-nums">${debitStr}</td>
                                 <td class="px-3.5 py-3 text-xs font-mono text-right whitespace-nowrap tabular-nums">${creditStr}</td>
                                 <td class="px-3.5 py-3 text-xs font-mono text-right text-[#D8E5F8] font-semibold whitespace-nowrap tabular-nums">
-                                    ${formatCents(entry.balance_after_cents)}
+                                    <span class="whitespace-nowrap tabular-nums">${formatCents(entry.balance_after_cents)}</span>
                                 </td>
-                                <td class="px-3.5 py-3 text-[11px] font-mono text-[#64748B] whitespace-nowrap tabular-nums truncate max-w-[180px]" title="${escapeHtml(entry.idempotency_key)}">
-                                    ${escapeHtml(entry.idempotency_key)}
+                                <td class="pl-3.5 pr-6 py-3 text-[11px] font-mono text-[#64748B] whitespace-nowrap tabular-nums" title="${escapeHtml(entry.idempotency_key)}">
+                                    <code class="px-1.5 py-0.5 bg-[#0C1018] border border-white/[0.06] text-[#94A3B8] whitespace-nowrap tabular-nums">${escapeHtml(entry.idempotency_key)}</code>
                                 </td>
                             </tr>
                         `;
@@ -1807,15 +1807,15 @@
                 const isTop3 = idx < 3;
                 return `
                     <tr class="border-b border-white/[0.06] hover:bg-[#121824]/60 transition whitespace-nowrap tabular-nums">
-                        <td class="px-4 py-3.5 font-mono text-xs font-bold whitespace-nowrap tabular-nums ${isTop3 ? 'text-[#E5C158]' : 'text-[#64748B]'}">#${rank}</td>
-                        <td class="px-4 py-3.5 font-mono text-sm font-bold text-[#F4F7FB] whitespace-nowrap tabular-nums">${escapeHtml(u.gamertag)}</td>
-                        <td class="px-4 py-3.5 whitespace-nowrap tabular-nums">
-                            <span class="px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider bg-[#121824] border border-white/10 text-[#D8E5F8] whitespace-nowrap tabular-nums">${escapeHtml(u.role)}</span>
+                        <td class="px-4 py-3 font-mono text-xs leading-5 font-bold whitespace-nowrap tabular-nums ${isTop3 ? 'text-[#E5C158]' : 'text-[#64748B]'}">#${rank}</td>
+                        <td class="px-4 py-3 font-mono text-xs leading-5 font-bold text-[#F4F7FB] whitespace-nowrap tabular-nums">${escapeHtml(u.gamertag)}</td>
+                        <td class="px-4 py-3 font-mono text-xs leading-5 whitespace-nowrap tabular-nums">
+                            <span class="px-2 py-0.5 text-[10px] leading-none font-mono uppercase tracking-wider bg-[#121824] border border-white/10 text-[#D8E5F8] whitespace-nowrap tabular-nums">${escapeHtml(u.role)}</span>
                         </td>
-                        <td class="px-4 py-3.5 font-mono text-xs text-[#94A3B8] whitespace-nowrap tabular-nums">${escapeHtml(u.preferred_class)}</td>
-                        <td class="px-4 py-3.5 font-mono text-sm font-bold text-right text-[#D8E5F8] whitespace-nowrap tabular-nums">${u.elo_rating} MMR</td>
-                        <td class="px-4 py-3.5 font-mono text-sm font-bold text-right text-[#10B981] whitespace-nowrap tabular-nums">${formatCents(wonCents)}</td>
-                        <td class="px-4 py-3.5 font-mono text-xs text-right text-[#E5C158] whitespace-nowrap tabular-nums">${formatCents(escrowCents)}</td>
+                        <td class="px-4 py-3 font-mono text-xs leading-5 text-[#94A3B8] whitespace-nowrap tabular-nums">${escapeHtml(u.preferred_class)}</td>
+                        <td class="px-4 py-3 font-mono text-xs leading-5 font-bold text-right text-[#D8E5F8] whitespace-nowrap tabular-nums"><span class="whitespace-nowrap tabular-nums">${u.elo_rating}\u00A0MMR</span></td>
+                        <td class="px-4 py-3 font-mono text-xs leading-5 font-bold text-right text-[#10B981] whitespace-nowrap tabular-nums"><span class="whitespace-nowrap tabular-nums">${formatCents(wonCents)}</span></td>
+                        <td class="pl-4 pr-6 py-3 font-mono text-xs leading-5 font-semibold text-right text-[#E5C158] whitespace-nowrap tabular-nums"><span class="whitespace-nowrap tabular-nums">${formatCents(escrowCents)}</span></td>
                     </tr>
                 `;
             })

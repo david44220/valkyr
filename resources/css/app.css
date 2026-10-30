@@ -109,10 +109,17 @@ body {
 
 .font-mono,
 .tabular-nums,
-[data-tabular] {
+[data-tabular],
+table th,
+table td {
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
     font-feature-settings: "tnum" 1, "zero" 1;
+}
+
+table th,
+table td {
+    white-space: nowrap;
 }
 
 /* Hero Text Optical Shadow for 100% Contrast Without Dark Overlay Divs */
