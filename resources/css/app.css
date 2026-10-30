@@ -1,0 +1,158 @@
+@import 'tailwindcss';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+@source '../views/**/*.blade.php';
+@source '../js/**/*.js';
+
+@theme {
+    --font-display: 'Syne', 'Clash Display', sans-serif;
+    --font-serif-italic: 'Instrument Serif', 'Playfair Display', Georgia, serif;
+    --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+}
+
+:root {
+    color-scheme: dark;
+
+    /* Surfaces & Fonds (Obsidienne Abyssale) */
+    --bg-abyss: #030407;                  /* oklch(0.11 0.015 260) - Fond principal */
+    --bg-cockpit: #080B11;                /* oklch(0.14 0.020 260) - Surface secondaire */
+    --bg-card: #0C1018;                   /* oklch(0.17 0.022 258) - Cartes & Modales */
+    --bg-glass: rgba(12, 16, 24, 0.78);   /* Surface HUD avec backdrop-filter: blur(16px) */
+    --bg-elevated: #121824;               /* oklch(0.21 0.025 255) - Hover / Active row */
+
+    /* Grilles Structurelles & Bordures (1px Hairline) */
+    --border-hairline: rgba(255, 255, 255, 0.08);
+    --border-subtle: rgba(255, 255, 255, 0.05);
+    --border-focus: rgba(216, 229, 248, 0.38);
+    --border-gold: rgba(229, 193, 88, 0.45);
+
+    /* Hiérarchie Typographique */
+    --text-primary: #F4F7FB;              /* oklch(0.97 0.008 250) - Blanc Albâtre */
+    --text-secondary: #94A3B8;            /* oklch(0.71 0.025 255) - Gris Acier */
+    --text-muted: #64748B;                /* oklch(0.55 0.025 255) - Métadonnées techniques */
+
+    /* Accents Chirurgicaux */
+    --accent-titanium: #D8E5F8;           /* oklch(0.91 0.035 245) - Titane Glacé (CTA & Focus) */
+    --accent-gold: #E5C158;               /* oklch(0.82 0.140 85)  - Or Souverain (Cashprizes & Escrow) */
+    --accent-gold-dim: rgba(229, 193, 88, 0.12);
+    --telemetry-emerald: #10B981;         /* oklch(0.70 0.170 160) - Télémétrie Live / Anti-Cheat OK */
+    --telemetry-amber: #F59E0B;           /* oklch(0.75 0.160 75)  - Séquestre Verrouillé / Alerte */
+    --telemetry-crimson: #EF4444;         /* oklch(0.63 0.220 25)  - REC ● / Élimination / Danger */
+
+    /* Typographie à 3 Niveaux */
+    --font-display: 'Syne', 'Clash Display', sans-serif;
+    --font-serif-italic: 'Instrument Serif', 'Playfair Display', Georgia, serif;
+    --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+
+    /* Courbes cinétiques & Transitions */
+    --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-tactical: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html {
+    color-scheme: dark;
+    background-color: var(--bg-abyss);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    scroll-behavior: smooth;
+    overflow-x: hidden;
+}
+
+body {
+    background-color: var(--bg-abyss);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    overflow-x: hidden;
+    min-height: 100dvh;
+}
+
+/* Studio Selection & Scrollbar Finishes */
+::selection {
+    background-color: var(--accent-gold);
+    color: var(--bg-abyss);
+}
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-abyss);
+}
+
+::-webkit-scrollbar-thumb {
+    background: #182132;
+    border: 1px solid var(--border-hairline);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #25334D;
+}
+
+/* Typographic Utility Classes */
+.font-display {
+    font-family: var(--font-display);
+}
+
+.font-serif-italic {
+    font-family: var(--font-serif-italic);
+    font-style: italic;
+}
+
+.font-sans {
+    font-family: var(--font-sans);
+}
+
+.font-mono,
+.tabular-nums,
+[data-tabular] {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1, "zero" 1;
+}
+
+/* Hero Text Optical Shadow for 100% Contrast Without Dark Overlay Divs */
+.hero-optical-shadow {
+    text-shadow: 0 2px 28px rgba(0, 0, 0, 0.95), 0 1px 6px rgba(0, 0, 0, 0.9);
+}
+
+/* Hairline Structural Grid Background */
+.tactical-grid-bg {
+    background-image:
+        linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    background-size: 64px 64px;
+}
+
+/* Custom Range Input for 4K Replay Scrubber */
+input[type="range"].tactical-range {
+    -webkit-appearance: none;
+    appearance: none;
+    background: rgba(255, 255, 255, 0.12);
+    height: 4px;
+    cursor: pointer;
+}
+
+input[type="range"].tactical-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    background: var(--accent-gold);
+    border: 2px solid var(--bg-abyss);
+    border-radius: 0;
+    cursor: pointer;
+}
+
+input[type="range"].tactical-range::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    background: var(--accent-gold);
+    border: 2px solid var(--bg-abyss);
+    border-radius: 0;
+    cursor: pointer;
+}
