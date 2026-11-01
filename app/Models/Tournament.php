@@ -27,10 +27,14 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'escrow_pool_cents',
     'sponsored_guarantee_cents',
     'rake_bps',
+    'organizer_share_bps',
     'platform_rake_cents',
+    'organizer_rake_cents',
     'net_prize_pool_cents',
     'max_participants',
     'registered_count',
+    'is_featured',
+    'boost_paid_cents',
     'first_place_user_id',
     'second_place_user_id',
     'third_place_user_id',
@@ -51,6 +55,8 @@ class Tournament extends Model
     public const string STATUS_CANCELLED = 'CANCELLED';
 
     public const int DEFAULT_RAKE_BPS = 800; // 8.00%
+
+    public const int DEFAULT_ORGANIZER_SHARE_BPS = 200; // 2.00%
 
     public const array ALLOWED_GAMES = [
         'VALORANT // PROTOCOL',
@@ -77,10 +83,14 @@ class Tournament extends Model
             'escrow_pool_cents' => 'integer',
             'sponsored_guarantee_cents' => 'integer',
             'rake_bps' => 'integer',
+            'organizer_share_bps' => 'integer',
             'platform_rake_cents' => 'integer',
+            'organizer_rake_cents' => 'integer',
             'net_prize_pool_cents' => 'integer',
             'max_participants' => 'integer',
             'registered_count' => 'integer',
+            'is_featured' => 'boolean',
+            'boost_paid_cents' => 'integer',
             'first_place_user_id' => 'integer',
             'second_place_user_id' => 'integer',
             'third_place_user_id' => 'integer',

@@ -37,6 +37,8 @@ final class StoreTournamentRequest extends FormRequest
                 'max:10000000',
             ],
             'max_participants' => ['required', 'integer', 'min:2', 'max:128'],
+            'rake_bps' => ['nullable', 'integer', 'min:100', 'max:2000'],
+            'organizer_share_bps' => ['nullable', 'integer', 'min:0', 'max:1000'],
             'starts_at' => ['nullable', 'date'],
         ];
     }

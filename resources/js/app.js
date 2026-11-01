@@ -1125,8 +1125,11 @@
                             Number(t.organizer_id) === Number(state.currentUser.id)));
 
                 const totalPool = Number(t.escrow_pool_cents || 0);
-                const rakeCents = Math.floor((totalPool * 800) / 10000);
+                const rakeBps = Number(t.rake_bps ?? 800);
+                const rakeCents = Math.floor((totalPool * rakeBps) / 10000);
                 const netPoolCents = totalPool - rakeCents;
+                const netPctLabel = ((10000 - rakeBps) / 100).toFixed(0);
+                const isFeatured = Boolean(t.is_featured);
 
                 const regs = Array.isArray(t.registrations) ? t.registrations : [];
                 const regTags = regs
@@ -1163,11 +1166,12 @@
                 }
 
                 return `
-                    <article class="min-w-0 overflow-hidden flex flex-col justify-between h-full bg-[#0C1018] border border-white/[0.08] hover:border-white/20 p-4 sm:p-5 transition">
+                    <article class="min-w-0 overflow-hidden flex flex-col justify-between h-full bg-[#0C1018] border ${isFeatured ? 'border-[#E5C158]/50' : 'border-white/[0.08]'} hover:border-white/20 p-4 sm:p-5 transition">
                         <div class="min-w-0">
                             <!-- Top Meta Row -->
                             <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
                                 <div class="flex flex-wrap items-center gap-1.5">
+                                    ${isFeatured ? '<span class="px-2 py-0.5 text-[10px] font-mono font-bold uppercase tracking-widest bg-[#E5C158] text-[#030407]">★ FEATURED</span>' : ''}
                                     <span class="px-2 py-0.5 text-[10px] font-mono uppercase tracking-widest bg-[#121824] border border-white/10 text-[#D8E5F8]">${escapeHtml(t.game)}</span>
                                     <span class="px-2 py-0.5 text-[10px] font-mono uppercase tracking-widest bg-[#080B11] border border-white/10 text-[#94A3B8] tabular-nums">${escapeHtml(t.format)}</span>
                                 </div>
@@ -1194,7 +1198,7 @@
                                     <div class="text-sm font-mono font-bold text-[#E5C158] tabular-nums mt-0.5">${formatCents(t.escrow_pool_cents)}</div>
                                 </div>
                                 <div class="bg-[#080B11] p-2.5 sm:p-3 min-w-0">
-                                    <div class="text-[10px] font-mono uppercase tracking-wider text-[#64748B] truncate">CASHPRIZE NET (92%)</div>
+                                    <div class="text-[10px] font-mono uppercase tracking-wider text-[#64748B] truncate">CASHPRIZE NET (${netPctLabel}%)</div>
                                     <div class="text-xs font-mono font-semibold text-[#10B981] tabular-nums mt-0.5">${formatCents(t.status === 'SETTLED' ? t.net_prize_pool_cents : netPoolCents)}</div>
                                 </div>
                                 <div class="bg-[#080B11] p-2.5 sm:p-3 min-w-0">
@@ -2024,16 +2028,59 @@
             });
         });
 
-        // 7A. Deposit Preset Buttons & Deposit Form (/api/wallets/deposit)
+        // 7A. Deposit Preset Buttons, Live Fee Calculator & Deposit Form (/api/wallets/deposit)
+        const depositRailSelect = document.getElementById('deposit-rail-select');
+        const depositAmountInput = document.getElementById('deposit-amount-cents');
+
+        function updateDepositFeeCalculator() {
+            if (!depositRailSelect || !depositAmountInput) return;
+            const opt = depositRailSelect.options[depositRailSelect.selectedIndex];
+            if (!opt) return;
+            const amountCents = Math.max(0, Math.trunc(Number(depositAmountInput.value || 0)));
+            const isPrime = Boolean(state.currentUser && state.currentUser.is_prime);
+            const feeBps = Number(opt.getAttribute('data-fee-bps') || 0);
+            const fixedCents = Number(opt.getAttribute('data-fixed-cents') || 0);
+            const mode = opt.getAttribute('data-mode') || 'INSTANT';
+            const instructions = opt.getAttribute('data-instructions') || '';
+
+            const feeCents = isPrime ? 0 : Math.floor((amountCents * feeBps) / 10000) + fixedCents;
+            const netCents = Math.max(0, amountCents - feeCents);
+
+            const feeEl = document.getElementById('deposit-calc-fee');
+            const netEl = document.getElementById('deposit-calc-net');
+            const modeEl = document.getElementById('deposit-calc-mode');
+            const instrEl = document.getElementById('deposit-rail-instructions');
+
+            if (feeEl) feeEl.textContent = formatCents(feeCents);
+            if (netEl) netEl.textContent = formatCents(netCents);
+            if (modeEl) {
+                modeEl.textContent = mode;
+                modeEl.className = `font-bold uppercase ${mode === 'INSTANT' ? 'text-[#10B981]' : 'text-[#F59E0B]'}`;
+            }
+            if (instrEl && instructions) {
+                instrEl.textContent = instructions;
+            }
+        }
+
+        if (depositRailSelect) {
+            depositRailSelect.addEventListener('change', updateDepositFeeCalculator);
+        }
+        if (depositAmountInput) {
+            depositAmountInput.addEventListener('input', updateDepositFeeCalculator);
+        }
+
         document.querySelectorAll('[data-deposit-preset]').forEach((btn) => {
             btn.addEventListener('click', () => {
                 const cents = Number(btn.getAttribute('data-deposit-preset'));
                 const input = document.getElementById('deposit-amount-cents');
                 if (input && cents) {
                     input.value = String(cents);
+                    updateDepositFeeCalculator();
                 }
             });
         });
+
+        updateDepositFeeCalculator();
 
         const depositForm = document.getElementById('form-wallet-deposit');
         if (depositForm) {
@@ -2043,6 +2090,10 @@
                 if (submitBtn) submitBtn.disabled = true;
                 const formData = new FormData(depositForm);
                 const amountCents = Math.trunc(Number(formData.get('amount_cents')));
+                const paymentRailId = formData.get('payment_rail_id')
+                    ? Number(formData.get('payment_rail_id'))
+                    : null;
+                const referenceCode = String(formData.get('reference_code') || '').trim() || null;
                 const idempotencyKey =
                     String(formData.get('idempotency_key') || '').trim() ||
                     generateIdempotencyKey('dep');
@@ -2056,6 +2107,8 @@
                         },
                         body: JSON.stringify({
                             amount_cents: amountCents,
+                            payment_rail_id: paymentRailId,
+                            reference_code: referenceCode,
                             idempotency_key: idempotencyKey,
                         }),
                     });
@@ -2065,11 +2118,15 @@
                         if (keyInput) keyInput.value = generateIdempotencyKey('dep');
                         await refreshServerState();
                         closeModal('modal-deposit');
+                        const isPending = res.status === 202 || data.status === 'PENDING_ADMIN';
                         showToast(
-                            data.message || 'Dépôt crédité sur le grand livre.',
-                            'success',
-                            `MONTANT: +${formatCents(amountCents)} // KEY: ${idempotencyKey}`
+                            data.message || 'Dépôt enregistré sur le grand livre.',
+                            isPending ? 'warning' : 'success',
+                            `MONTANT BRUT: +${formatCents(amountCents)} // KEY: ${idempotencyKey}`
                         );
+                        if (window.location.pathname === '/dashboard') {
+                            setTimeout(() => window.location.reload(), 450);
+                        }
                     } else {
                         showToast(
                             data.message || 'Dépôt refusé (authentification requise ou montant invalide).',
@@ -2084,16 +2141,71 @@
             });
         }
 
-        // 7B. SEPA Bank Withdrawal Preset Buttons & Form (/api/wallets/withdraw)
+        // 7B. Withdrawal Preset Buttons, Live Fee Calculator, Saved Method & Form (/api/wallets/withdraw)
+        const withdrawRailSelect = document.getElementById('withdraw-rail-select');
+        const withdrawSavedMethodSelect = document.getElementById('withdraw-saved-method-select');
+        const withdrawAmountInput = document.getElementById('withdraw-amount-cents');
+        const withdrawIbanInput = document.getElementById('withdraw-iban');
+
+        function updateWithdrawFeeCalculator() {
+            if (!withdrawRailSelect || !withdrawAmountInput) return;
+            const opt = withdrawRailSelect.options[withdrawRailSelect.selectedIndex];
+            if (!opt) return;
+            const amountCents = Math.max(0, Math.trunc(Number(withdrawAmountInput.value || 0)));
+            const isPrime = Boolean(state.currentUser && state.currentUser.is_prime);
+            const feeBps = Number(opt.getAttribute('data-fee-bps') || 0);
+            const fixedCents = Number(opt.getAttribute('data-fixed-cents') || 0);
+            const mode = opt.getAttribute('data-mode') || 'INSTANT';
+
+            const feeCents = isPrime ? 0 : Math.floor((amountCents * feeBps) / 10000) + fixedCents;
+            const netCents = Math.max(0, amountCents - feeCents);
+
+            const feeEl = document.getElementById('withdraw-calc-fee');
+            const netEl = document.getElementById('withdraw-calc-net');
+            const modeEl = document.getElementById('withdraw-calc-mode');
+
+            if (feeEl) feeEl.textContent = formatCents(feeCents);
+            if (netEl) netEl.textContent = formatCents(netCents);
+            if (modeEl) {
+                modeEl.textContent = mode;
+                modeEl.className = `font-bold uppercase ${mode === 'INSTANT' ? 'text-[#10B981]' : 'text-[#F59E0B]'}`;
+            }
+        }
+
+        if (withdrawRailSelect) {
+            withdrawRailSelect.addEventListener('change', updateWithdrawFeeCalculator);
+        }
+        if (withdrawAmountInput) {
+            withdrawAmountInput.addEventListener('input', updateWithdrawFeeCalculator);
+        }
+        if (withdrawSavedMethodSelect) {
+            withdrawSavedMethodSelect.addEventListener('change', () => {
+                const opt = withdrawSavedMethodSelect.options[withdrawSavedMethodSelect.selectedIndex];
+                if (!opt) return;
+                const railId = opt.getAttribute('data-rail-id');
+                const masked = opt.getAttribute('data-masked');
+                if (railId && withdrawRailSelect) {
+                    withdrawRailSelect.value = railId;
+                }
+                if (masked && withdrawIbanInput) {
+                    withdrawIbanInput.value = masked;
+                }
+                updateWithdrawFeeCalculator();
+            });
+        }
+
         document.querySelectorAll('[data-withdraw-preset]').forEach((btn) => {
             btn.addEventListener('click', () => {
                 const cents = Number(btn.getAttribute('data-withdraw-preset'));
                 const input = document.getElementById('withdraw-amount-cents');
                 if (input && cents) {
                     input.value = String(cents);
+                    updateWithdrawFeeCalculator();
                 }
             });
         });
+
+        updateWithdrawFeeCalculator();
 
         const withdrawForm = document.getElementById('form-wallet-withdraw');
         if (withdrawForm) {
@@ -2104,6 +2216,12 @@
                 const formData = new FormData(withdrawForm);
                 const amountCents = Math.trunc(Number(formData.get('amount_cents')));
                 const iban = String(formData.get('iban') || '').trim();
+                const paymentRailId = formData.get('payment_rail_id')
+                    ? Number(formData.get('payment_rail_id'))
+                    : null;
+                const userPaymentMethodId = formData.get('user_payment_method_id')
+                    ? Number(formData.get('user_payment_method_id'))
+                    : null;
                 const idempotencyKey =
                     String(formData.get('idempotency_key') || '').trim() ||
                     generateIdempotencyKey('wd');
@@ -2118,6 +2236,8 @@
                         body: JSON.stringify({
                             amount_cents: amountCents,
                             iban: iban,
+                            payment_rail_id: paymentRailId,
+                            user_payment_method_id: userPaymentMethodId,
                             idempotency_key: idempotencyKey,
                         }),
                     });
@@ -2127,18 +2247,21 @@
                         if (keyInput) keyInput.value = generateIdempotencyKey('wd');
                         await refreshServerState();
                         showToast(
-                            data.message || 'Retrait SEPA exécuté et débité du grand livre.',
+                            data.message || 'Retrait exécuté et débité du grand livre.',
                             'success',
-                            `VIREMENT: -${formatCents(amountCents)} // IBAN: ${iban}`
+                            `VIREMENT: -${formatCents(amountCents)} // COMPTE: ${iban}`
                         );
+                        if (window.location.pathname === '/dashboard') {
+                            setTimeout(() => window.location.reload(), 450);
+                        }
                     } else {
                         showToast(
-                            data.message || 'Retrait SEPA refusé (solde disponible insuffisant ou IBAN invalide).',
+                            data.message || 'Retrait refusé (solde disponible insuffisant ou compte invalide).',
                             'error'
                         );
                     }
                 } catch (err) {
-                    showToast('Erreur réseau lors du retrait SEPA.', 'error');
+                    showToast('Erreur réseau lors du retrait.', 'error');
                 } finally {
                     if (submitBtn) submitBtn.disabled = false;
                 }
@@ -2182,6 +2305,108 @@
             });
         });
 
+        // 7D. VALKYR PRIME Membership Subscription (/api/wallets/subscribe-prime)
+        const subscribePrimeForm = document.getElementById('form-subscribe-prime');
+        if (subscribePrimeForm) {
+            subscribePrimeForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const submitBtn = subscribePrimeForm.querySelector('button[type="submit"]');
+                if (submitBtn) submitBtn.disabled = true;
+                const formData = new FormData(subscribePrimeForm);
+                const idempotencyKey =
+                    String(formData.get('idempotency_key') || '').trim() ||
+                    generateIdempotencyKey('prime');
+
+                try {
+                    const res = await fetch('/api/wallets/subscribe-prime', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            Accept: 'application/json',
+                        },
+                        body: JSON.stringify({ idempotency_key: idempotencyKey }),
+                    });
+                    const data = await res.json();
+                    if (res.ok) {
+                        showToast(
+                            data.message || 'Statut ★ VALKYR PRIME activé ! 0% frais de rails + +50 MMR.',
+                            'success'
+                        );
+                        setTimeout(() => window.location.reload(), 400);
+                    } else {
+                        showToast(data.message || 'Souscription Prime refusée.', 'error');
+                    }
+                } catch (err) {
+                    showToast('Erreur réseau lors de la souscription Prime.', 'error');
+                } finally {
+                    if (submitBtn) submitBtn.disabled = false;
+                }
+            });
+        }
+
+        // 7E. Saved Beneficiary Payment Methods (/api/payment-methods)
+        const storeMethodForm = document.getElementById('form-store-payment-method');
+        if (storeMethodForm) {
+            storeMethodForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const submitBtn = storeMethodForm.querySelector('button[type="submit"]');
+                if (submitBtn) submitBtn.disabled = true;
+                const formData = new FormData(storeMethodForm);
+
+                try {
+                    const res = await fetch('/api/payment-methods', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            Accept: 'application/json',
+                        },
+                        body: JSON.stringify({
+                            payment_rail_id: Number(formData.get('payment_rail_id')),
+                            label: formData.get('label'),
+                            account_identifier: formData.get('account_identifier'),
+                            is_default: Boolean(formData.get('is_default')),
+                        }),
+                    });
+                    const data = await res.json();
+                    if (res.ok) {
+                        showToast(data.message || 'Moyen de paiement enregistré.', 'success');
+                        setTimeout(() => window.location.reload(), 350);
+                    } else {
+                        showToast(data.message || "Erreur lors de l'enregistrement du compte.", 'error');
+                    }
+                } catch (err) {
+                    showToast('Erreur réseau.', 'error');
+                } finally {
+                    if (submitBtn) submitBtn.disabled = false;
+                }
+            });
+        }
+
+        document.querySelectorAll('[data-delete-payment-method]').forEach((form) => {
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const methodId = form.getAttribute('data-delete-payment-method');
+                if (!methodId) return;
+                const btn = form.querySelector('button[type="submit"]');
+                if (btn) btn.disabled = true;
+                try {
+                    const res = await fetch(`/api/payment-methods/${methodId}`, {
+                        method: 'DELETE',
+                        headers: { Accept: 'application/json' },
+                    });
+                    const data = await res.json();
+                    if (res.ok) {
+                        showToast(data.message || 'Compte bénéficiaire supprimé.', 'warning');
+                        setTimeout(() => window.location.reload(), 300);
+                    } else {
+                        showToast(data.message || 'Suppression refusée.', 'error');
+                    }
+                } finally {
+                    if (btn) btn.disabled = false;
+                }
+            });
+        });
+
         // 8. Create Tournament Form (/api/tournaments)
         const createTournamentForm = document.getElementById('form-create-tournament');
         if (createTournamentForm) {
@@ -2204,6 +2429,12 @@
                             format: formData.get('format'),
                             entry_fee_cents: Math.trunc(Number(formData.get('entry_fee_cents'))),
                             max_participants: Math.trunc(Number(formData.get('max_participants'))),
+                            rake_bps: formData.get('rake_bps')
+                                ? Math.trunc(Number(formData.get('rake_bps')))
+                                : 800,
+                            organizer_share_bps: formData.get('organizer_share_bps')
+                                ? Math.trunc(Number(formData.get('organizer_share_bps')))
+                                : 2500,
                         }),
                     });
                     const data = await res.json();
@@ -2323,7 +2554,7 @@
                     if (res.ok) {
                         closeModal('modal-tournament-detail');
                         showToast(
-                            data.message || 'Cashprize 60/30/10 distribué et commission 8% prélevée.',
+                            data.message || 'Cashprize 60/30/10 distribué et commission prélevée.',
                             'success',
                             `CLÉ DE RÈGLEMENT: ${idempotencyKey}`
                         );
@@ -2397,6 +2628,74 @@
             });
         }
 
+        // 11B. Boost Tournament (/api/tournaments/{id}/boost) & Sponsor Pool (/api/tournaments/{id}/sponsor)
+        document.querySelectorAll('[data-boost-tournament]').forEach((form) => {
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const tId = form.getAttribute('data-boost-tournament');
+                if (!tId) return;
+                const btn = form.querySelector('button[type="submit"]');
+                if (btn) btn.disabled = true;
+                const formData = new FormData(form);
+                try {
+                    const res = await fetch(`/api/tournaments/${tId}/boost`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            Accept: 'application/json',
+                        },
+                        body: JSON.stringify({
+                            idempotency_key:
+                                formData.get('idempotency_key') || generateIdempotencyKey(`boost:t${tId}`),
+                        }),
+                    });
+                    const data = await res.json();
+                    if (res.ok) {
+                        showToast(data.message || 'Arène propulsée en tête du catalogue (★ FEATURED).', 'success');
+                        setTimeout(() => window.location.reload(), 400);
+                    } else {
+                        showToast(data.message || 'Boost refusé.', 'error');
+                    }
+                } finally {
+                    if (btn) btn.disabled = false;
+                }
+            });
+        });
+
+        document.querySelectorAll('[data-sponsor-tournament]').forEach((form) => {
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const tId = form.getAttribute('data-sponsor-tournament');
+                if (!tId) return;
+                const btn = form.querySelector('button[type="submit"]');
+                if (btn) btn.disabled = true;
+                const formData = new FormData(form);
+                try {
+                    const res = await fetch(`/api/tournaments/${tId}/sponsor`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            Accept: 'application/json',
+                        },
+                        body: JSON.stringify({
+                            amount_cents: Math.trunc(Number(formData.get('amount_cents') || 10000)),
+                            idempotency_key:
+                                formData.get('idempotency_key') || generateIdempotencyKey(`spon:t${tId}`),
+                        }),
+                    });
+                    const data = await res.json();
+                    if (res.ok) {
+                        showToast(data.message || 'Dotation sponsor injectée dans le séquestre.', 'success');
+                        setTimeout(() => window.location.reload(), 400);
+                    } else {
+                        showToast(data.message || "Échec de l'injection sponsor.", 'error');
+                    }
+                } finally {
+                    if (btn) btn.disabled = false;
+                }
+            });
+        });
+
         // 12. True 4-Tab Cockpit Switcher on /dashboard (ZERO scrollIntoView!)
         document.querySelectorAll('[data-cockpit-tab]').forEach((btn) => {
             btn.addEventListener('click', () => {
@@ -2443,6 +2742,72 @@
         document.querySelectorAll('[data-bracket-select]').forEach((btn) => {
             btn.addEventListener('click', () => {
                 renderBracket(Number(btn.getAttribute('data-bracket-select')));
+            });
+        });
+
+        // 16. Page 5 Sovereign Admin Back-Office (/admin) — 5-Tab Switcher & Master Ledger Filter
+        function switchAdminPanel(panelKey) {
+            const validPanels = ['treasury', 'rails', 'users', 'tournaments', 'ledger'];
+            const target = validPanels.includes(panelKey) ? panelKey : 'treasury';
+
+            document.querySelectorAll('[data-admin-tab]').forEach((btn) => {
+                const key = btn.getAttribute('data-admin-tab');
+                const isActive = key === target;
+                btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+                if (isActive) {
+                    btn.classList.add('border-[#E5C158]', 'bg-[#121824]', 'text-[#F4F7FB]', 'font-semibold');
+                    btn.classList.remove('border-transparent', 'text-[#94A3B8]');
+                } else {
+                    btn.classList.remove('border-[#E5C158]', 'bg-[#121824]', 'text-[#F4F7FB]', 'font-semibold');
+                    btn.classList.add('border-transparent', 'text-[#94A3B8]');
+                }
+            });
+
+            document.querySelectorAll('[data-admin-panel]').forEach((panel) => {
+                const key = panel.getAttribute('data-admin-panel');
+                if (key === target) {
+                    panel.classList.remove('hidden');
+                } else {
+                    panel.classList.add('hidden');
+                }
+            });
+
+            if (window.history && window.history.replaceState && window.location.pathname === '/admin') {
+                const url = new URL(window.location.href);
+                url.searchParams.set('panel', target);
+                window.history.replaceState({}, '', url.toString());
+            }
+        }
+
+        document.querySelectorAll('[data-admin-tab]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const target = btn.getAttribute('data-admin-tab');
+                if (target) switchAdminPanel(target);
+            });
+        });
+
+        document.querySelectorAll('[data-admin-ledger-filter]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const f = btn.getAttribute('data-admin-ledger-filter') || 'ALL';
+                document.querySelectorAll('[data-admin-ledger-filter]').forEach((b) => {
+                    const active = (b.getAttribute('data-admin-ledger-filter') || 'ALL') === f;
+                    b.classList.toggle('border-[#E5C158]', active);
+                    b.classList.toggle('bg-[#121824]', active);
+                    b.classList.toggle('text-[#F4F7FB]', active);
+                    b.classList.toggle('font-bold', active);
+                    b.classList.toggle('border-white/10', !active);
+                    b.classList.toggle('bg-[#080B11]', !active);
+                    b.classList.toggle('text-[#94A3B8]', !active);
+                });
+
+                document.querySelectorAll('#admin-master-ledger-tbody tr[data-master-entry-type]').forEach((row) => {
+                    const rowType = row.getAttribute('data-master-entry-type');
+                    if (f === 'ALL' || rowType === f) {
+                        row.classList.remove('hidden');
+                    } else {
+                        row.classList.add('hidden');
+                    }
+                });
             });
         });
     }

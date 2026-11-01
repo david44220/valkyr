@@ -59,6 +59,14 @@
                     >
                         <span>Mon Cockpit ↗</span>
                     </a>
+                    @if($currentUser->isAdmin())
+                        <a
+                            href="/admin"
+                            class="h-10 px-3.5 bg-[#E5C158] text-[#030407] hover:bg-[#D8E5F8] font-mono text-xs font-bold uppercase tracking-wider inline-flex items-center gap-1.5 rounded-none whitespace-nowrap transition"
+                        >
+                            <span>⚙ Commandement Admin (/admin) ↗</span>
+                        </a>
+                    @endif
                 @endif
             </div>
 
@@ -97,11 +105,16 @@
         <!-- =================================================================
              1. ARENA HERO HEADER & CONTEXTUAL BUY-IN REGISTRATION MODULE
              ================================================================= -->
-        <section class="grid grid-cols-1 lg:grid-cols-12 border border-white/[0.08] bg-[#0C1018]">
+        <section class="grid grid-cols-1 lg:grid-cols-12 border {{ $tournament->is_featured ? 'border-[#E5C158]/60' : 'border-white/[0.08]' }} bg-[#0C1018]">
             <!-- Left 7 Cols: Arena Metadata & Identity -->
             <div class="lg:col-span-7 p-6 sm:p-8 lg:p-10 border-b lg:border-b-0 lg:border-r border-white/[0.08] flex flex-col justify-between">
                 <div>
                     <div class="flex flex-wrap items-center gap-2 mb-4 font-mono text-xs">
+                        @if($tournament->is_featured)
+                            <span class="px-2.5 py-1 bg-[#E5C158] text-[#030407] font-bold uppercase tracking-widest">
+                                ★ FEATURED // SPONSORED
+                            </span>
+                        @endif
                         <span class="px-2.5 py-1 bg-[#121824] border border-white/10 text-[#D8E5F8] font-semibold uppercase tracking-wider">
                             {{ $tournament->game }}
                         </span>
@@ -264,13 +277,13 @@
         </section>
 
         <!-- =================================================================
-             2. 7-CARD MATHEMATICAL BREAKDOWN GRID (TABULAR-NUMS)
+             2. 8-CARD MATHEMATICAL BREAKDOWN GRID (TABULAR-NUMS + REVSHARE)
              ================================================================= -->
         <section aria-label="Décomposition Mathématique du Séquestre">
             <div class="text-[10px] font-mono uppercase tracking-[0.2em] text-[#E5C158] mb-3">
-                TÉLÉMÉTRIE FINANCIÈRE // COMMISSION 800 BPS (8,00 %) &amp; RÉPARTITION 60 / 30 / 10
+                TÉLÉMÉTRIE FINANCIÈRE // COMMISSION {{ number_format($financialBreakdown['rake_bps'] / 100, 2, ',', ' ') }} % (DONT {{ number_format($financialBreakdown['organizer_share_bps'] / 100, 2, ',', ' ') }} % REVSHARE ORGANISATEUR) &amp; SPLIT 60 / 30 / 10
             </div>
-            <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 font-mono tabular-nums">
+            <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 font-mono tabular-nums">
                 <div class="bg-[#0C1018] border border-white/[0.08] p-4">
                     <div class="text-[10px] text-[#64748B]">BUY-IN UNITAIRE</div>
                     <div class="text-sm font-bold text-[#F4F7FB] mt-1">
@@ -284,13 +297,19 @@
                     </div>
                 </div>
                 <div class="bg-[#0C1018] border border-white/[0.08] p-4">
-                    <div class="text-[10px] text-[#F59E0B]">RAKE PLATEFORME (8%)</div>
+                    <div class="text-[10px] text-[#F59E0B]">RAKE PLATEFORME</div>
                     <div class="text-sm font-bold text-[#F59E0B] mt-1">
                         {{ \App\Models\Wallet::formatCents($financialBreakdown['platform_rake_cents']) }}
                     </div>
                 </div>
+                <div class="bg-[#0C1018] border border-[#D8E5F8]/30 p-4">
+                    <div class="text-[10px] text-[#D8E5F8]">REVSHARE ORG ({{ number_format($financialBreakdown['organizer_share_bps'] / 100, 2, ',', ' ') }}%)</div>
+                    <div class="text-sm font-bold text-[#D8E5F8] mt-1">
+                        {{ \App\Models\Wallet::formatCents($financialBreakdown['organizer_rake_cents'] ?? 0) }}
+                    </div>
+                </div>
                 <div class="bg-[#0C1018] border border-[#10B981]/35 p-4">
-                    <div class="text-[10px] text-[#10B981]">POOL NET (92%)</div>
+                    <div class="text-[10px] text-[#10B981]">POOL NET JOUEURS</div>
                     <div class="text-sm font-bold text-[#10B981] mt-1">
                         {{ \App\Models\Wallet::formatCents($financialBreakdown['net_prize_pool_cents']) }}
                     </div>
@@ -307,7 +326,7 @@
                         {{ \App\Models\Wallet::formatCents($financialBreakdown['second_prize_cents']) }}
                     </div>
                 </div>
-                <div class="bg-[#080B11] border border-white/15 p-4 col-span-2 sm:col-span-1">
+                <div class="bg-[#080B11] border border-white/15 p-4">
                     <div class="text-[10px] text-[#10B981]">3E PLACE (10%)</div>
                     <div class="text-sm font-bold text-[#10B981] mt-1">
                         {{ \App\Models\Wallet::formatCents($financialBreakdown['third_prize_cents']) }}
@@ -563,7 +582,39 @@
                             </button>
                         </form>
 
-                        <!-- Form 2: Cancel & 100% Refund -->
+                        <!-- Form 2: ★ Boost Arena & + Sponsor Pool Injection -->
+                        <div class="bg-[#080B11] border border-white/10 p-5 space-y-4 font-mono text-xs">
+                            <div class="font-bold text-[#10B981] uppercase">
+                                2. BOOST DE VISIBILITÉ ★ FEATURED &amp; ABONDEMENT SPONSOR (VIA WALLET)
+                            </div>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+                                <div>
+                                    @if(!$tournament->is_featured)
+                                        <form action="/tournaments/{{ $tournament->id }}/boost" method="POST" data-boost-tournament="{{ $tournament->id }}">
+                                            @csrf
+                                            <input type="hidden" name="idempotency_key" value="boost:show:t{{ $tournament->id }}:{{ uniqid() }}" />
+                                            <button type="submit" class="w-full h-10 px-3 bg-[#E5C158] text-[#030407] hover:bg-[#D8E5F8] font-bold uppercase tracking-wider cursor-pointer transition whitespace-nowrap">
+                                                ★ Boost Arène (25,00 €) ↗
+                                            </button>
+                                        </form>
+                                    @else
+                                        <div class="h-10 px-3 bg-[#E5C158]/15 border border-[#E5C158]/50 text-[#E5C158] font-bold flex items-center justify-center">
+                                            ✓ ★ FEATURED ACTIF
+                                        </div>
+                                    @endif
+                                </div>
+                                <form action="/tournaments/{{ $tournament->id }}/sponsor" method="POST" data-sponsor-tournament="{{ $tournament->id }}" class="flex items-center gap-2">
+                                    @csrf
+                                    <input type="hidden" name="idempotency_key" value="sponsor:show:t{{ $tournament->id }}:{{ uniqid() }}" />
+                                    <input type="number" name="amount_cents" value="5000" min="100" max="10000000" step="500" class="w-24 h-10 px-2 bg-[#0C1018] border border-white/15 text-[#10B981] font-bold tabular-nums" />
+                                    <button type="submit" class="flex-1 h-10 px-3 bg-[#10B981] text-[#030407] hover:bg-[#E5C158] font-bold uppercase tracking-wider cursor-pointer transition whitespace-nowrap">
+                                        + Dotation ↗
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+
+                        <!-- Form 3: Cancel & 100% Refund -->
                         <form
                             id="form-cancel-tournament"
                             data-tournament-id="{{ $tournament->id }}"
@@ -573,7 +624,7 @@
                         >
                             @csrf
                             <div class="text-xs font-mono font-bold text-[#EF4444] uppercase">
-                                2. ANNULATION D'URGENCE &amp; REMBOURSEMENT INTÉGRAL (100% ESCROW)
+                                3. ANNULATION D'URGENCE &amp; REMBOURSEMENT INTÉGRAL (100% ESCROW)
                             </div>
                             <input type="hidden" id="cancel-idempotency-key" name="idempotency_key" value="cancel:t{{ $tournament->id }}:{{ uniqid() }}" />
                             <input type="text" name="reason" value="Annulation officielle par Arbitre — remboursement intégral 100%" class="w-full h-10 px-3 bg-[#0C1018] border border-white/10 font-mono text-xs text-[#94A3B8]" />

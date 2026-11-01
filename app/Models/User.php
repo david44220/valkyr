@@ -23,6 +23,10 @@ use Illuminate\Notifications\Notifiable;
     'role',
     'elo_rating',
     'preferred_class',
+    'is_prime',
+    'prime_expires_at',
+    'is_frozen',
+    'kyc_status',
 ])]
 #[Hidden([
     'password',
@@ -38,6 +42,12 @@ class User extends Authenticatable
     public const string ROLE_ORGANIZER = 'ORGANIZER';
 
     public const string ROLE_PLAYER = 'PLAYER';
+
+    public const string KYC_STANDARD = 'STANDARD';
+
+    public const string KYC_VERIFIED_PRO = 'VERIFIED_PRO';
+
+    public const string KYC_INSTITUTIONAL = 'INSTITUTIONAL';
 
     public const array ALLOWED_CLASSES = [
         'VANGUARD',
@@ -57,6 +67,9 @@ class User extends Authenticatable
             'email_verified_at' => 'immutable_datetime',
             'password' => 'hashed',
             'elo_rating' => 'integer',
+            'is_prime' => 'boolean',
+            'prime_expires_at' => 'immutable_datetime',
+            'is_frozen' => 'boolean',
         ];
     }
 
@@ -90,6 +103,22 @@ class User extends Authenticatable
     public function triggeredLedgerEntries(): HasMany
     {
         return $this->hasMany(LedgerEntry::class, 'actor_id');
+    }
+
+    /**
+     * @return HasMany<UserPaymentMethod, $this>
+     */
+    public function paymentMethods(): HasMany
+    {
+        return $this->hasMany(UserPaymentMethod::class, 'user_id')->orderByDesc('is_default')->orderByDesc('id');
+    }
+
+    /**
+     * @return HasMany<WalletFundingRequest, $this>
+     */
+    public function fundingRequests(): HasMany
+    {
+        return $this->hasMany(WalletFundingRequest::class, 'user_id')->orderByDesc('id');
     }
 
     public function isAdmin(): bool

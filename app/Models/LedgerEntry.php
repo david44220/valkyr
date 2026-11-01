@@ -33,6 +33,12 @@ class LedgerEntry extends Model
 
     public const string TYPE_WITHDRAWAL = 'WITHDRAWAL';
 
+    public const string TYPE_DEPOSIT_FEE_DEBIT = 'DEPOSIT_FEE_DEBIT';
+
+    public const string TYPE_WITHDRAWAL_FEE_DEBIT = 'WITHDRAWAL_FEE_DEBIT';
+
+    public const string TYPE_PLATFORM_PAYMENT_FEE_CREDIT = 'PLATFORM_PAYMENT_FEE_CREDIT';
+
     public const string TYPE_BUY_IN_ESCROW_DEBIT = 'BUY_IN_ESCROW_DEBIT';
 
     public const string TYPE_BUY_IN_ESCROW_CREDIT = 'BUY_IN_ESCROW_CREDIT';
@@ -47,9 +53,23 @@ class LedgerEntry extends Model
 
     public const string TYPE_PLATFORM_RAKE_CREDIT = 'PLATFORM_RAKE_CREDIT';
 
+    public const string TYPE_ORGANIZER_RAKE_SHARE_CREDIT = 'ORGANIZER_RAKE_SHARE_CREDIT';
+
     public const string TYPE_TOURNAMENT_REFUND_DEBIT = 'TOURNAMENT_REFUND_DEBIT';
 
     public const string TYPE_TOURNAMENT_REFUND_CREDIT = 'TOURNAMENT_REFUND_CREDIT';
+
+    public const string TYPE_PRIME_SUBSCRIPTION_DEBIT = 'PRIME_SUBSCRIPTION_DEBIT';
+
+    public const string TYPE_PRIME_SUBSCRIPTION_CREDIT = 'PRIME_SUBSCRIPTION_CREDIT';
+
+    public const string TYPE_ARENA_BOOST_DEBIT = 'ARENA_BOOST_DEBIT';
+
+    public const string TYPE_ARENA_BOOST_CREDIT = 'ARENA_BOOST_CREDIT';
+
+    public const string TYPE_SPONSOR_POOL_DEBIT = 'SPONSOR_POOL_DEBIT';
+
+    public const string TYPE_SPONSOR_POOL_CREDIT = 'SPONSOR_POOL_CREDIT';
 
     protected static function booted(): void
     {

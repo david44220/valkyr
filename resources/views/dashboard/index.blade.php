@@ -6,7 +6,7 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
     <title>Cockpit Opérateur ({{ $currentUser->gamertag }}) — VALKYR // ARENA</title>
-    <meta name="description" content="Cockpit financier, portefeuille séquestre SEPA, grand livre immuable en partie double et console organisateur VALKYR // ARENA.">
+    <meta name="description" content="Cockpit financier, portefeuille séquestre SEPA/Carte/Crypto, Pass VALKYR PRIME, grand livre immuable en partie double et console organisateur VALKYR // ARENA.">
 
     <!-- Bespoke Sovereign Inline SVG Favicon -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%23030407'/%3E%3Crect x='2' y='2' width='60' height='60' fill='none' stroke='%23E5C158' stroke-width='2'/%3E%3Cpath d='M32 10 L38 26 L54 32 L38 38 L32 54 L26 38 L10 32 L26 26 Z' fill='%23E5C158'/%3E%3C/svg%3E">
@@ -25,10 +25,13 @@
             'page' => 'dashboard',
             'activeCockpitTab' => $activeTabKey,
             'tournaments' => $tournaments,
+            'paymentRails' => $paymentRails ?? collect(),
             'currentUser' => $currentUser,
             'wallet' => $wallet,
             'ledgerEntries' => $ledgerEntries,
             'myRegistrations' => $myRegistrations,
+            'myPaymentMethods' => $myPaymentMethods ?? collect(),
+            'myFundingRequests' => $myFundingRequests ?? collect(),
             'leaderboard' => $leaderboard,
             'platformStats' => $platformStats,
         ];
@@ -44,13 +47,19 @@
     <!-- Toast Notification Stack -->
     <div id="toast-container" class="fixed bottom-6 right-6 z-[100] flex flex-col gap-3 pointer-events-none max-w-md w-[calc(100vw-3rem)]"></div>
 
+    @if(session('status'))
+        <div class="bg-[#10B981]/15 border-b border-[#10B981]/40 px-4 py-2.5 text-center font-mono text-xs text-[#10B981]">
+            ✓ {{ session('status') }}
+        </div>
+    @endif
+
     <!-- =====================================================================
          TOPBAR COCKPIT MEMBRE (IDENTITÉ, SOLDE LIVE, BASCULE DÉMO & DÉCONNEXION)
          ===================================================================== -->
     <header class="sticky top-0 z-50 bg-[#080B11]/95 backdrop-blur-md border-b border-white/[0.08]">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-wrap items-center justify-between gap-4">
-            <!-- Left: Brand + Public Arena Return Link -->
-            <div class="flex flex-wrap items-center gap-4">
+            <!-- Left: Brand + Public Arena Return Link + Admin Command Link -->
+            <div class="flex flex-wrap items-center gap-3">
                 <a href="/dashboard" class="font-display font-extrabold text-lg tracking-tight text-[#F4F7FB] flex items-center gap-2 whitespace-nowrap">
                     <span class="text-[#E5C158]" aria-hidden="true">✦</span>
                     <span>VALKYR // COCKPIT</span>
@@ -61,6 +70,15 @@
                 >
                     <span>← Voir l'Arène Publique</span>
                 </a>
+                @if($currentUser->isAdmin())
+                    <a
+                        href="/admin"
+                        id="topbar-admin-command-link"
+                        class="h-10 px-3.5 bg-[#E5C158] text-[#030407] hover:bg-[#D8E5F8] font-mono text-xs font-bold uppercase tracking-wider inline-flex items-center gap-1.5 rounded-none whitespace-nowrap transition"
+                    >
+                        <span>⚙ Commandement Admin (/admin) ↗</span>
+                    </a>
+                @endif
             </div>
 
             <!-- Right: Live Telemetry Balances + 1-Click Demo Switcher + Explicit Logout -->
@@ -91,7 +109,7 @@
                                 value="{{ $dUser->email }}"
                                 {{ $currentUser->id === $dUser->id ? 'selected' : '' }}
                             >
-                                {{ $dUser->gamertag }} [{{ $dUser->role }}] — {{ $dUser->wallet ? \App\Models\Wallet::formatCents($dUser->wallet->balance_cents) : '0,00 €' }}
+                                {{ $dUser->gamertag }} [{{ $dUser->role }}]{{ $dUser->is_prime ? ' ★ PRIME' : '' }} — {{ $dUser->wallet ? \App\Models\Wallet::formatCents($dUser->wallet->balance_cents) : '0,00 €' }}
                             </option>
                         @endforeach
                     </select>
@@ -130,8 +148,15 @@
                                 {{ $currentUser->role }}
                             </span>
                         </div>
-                        <div id="cockpit-operator-title" class="font-display font-extrabold text-xl text-[#F4F7FB] tracking-tight truncate">
-                            {{ $currentUser->gamertag }}
+                        <div class="flex items-center gap-2">
+                            <div id="cockpit-operator-title" class="font-display font-extrabold text-xl text-[#F4F7FB] tracking-tight truncate">
+                                {{ $currentUser->gamertag }}
+                            </div>
+                            @if($currentUser->is_prime)
+                                <span id="sidebar-prime-badge" class="px-2 py-0.5 bg-[#E5C158] text-[#030407] font-mono text-[10px] font-bold uppercase whitespace-nowrap">
+                                    ★ PRIME
+                                </span>
+                            @endif
                         </div>
                         <div id="cockpit-operator-email" class="font-mono text-xs text-[#94A3B8] truncate mt-0.5">
                             {{ $currentUser->email }}
@@ -143,6 +168,11 @@
                             <span class="px-2 py-0.5 bg-[#0C1018] border border-white/10 text-[#E5C158]">
                                 {{ $currentUser->elo_rating }} MMR
                             </span>
+                            @if($currentUser->is_frozen)
+                                <span class="px-2 py-0.5 bg-[#EF4444] text-[#030407] font-bold">
+                                    ❄ WALLET GELÉ
+                                </span>
+                            @endif
                         </div>
                     </div>
 
@@ -158,7 +188,7 @@
                             aria-selected="{{ $activeTabKey === 'overview' ? 'true' : 'false' }}"
                             class="w-full text-left px-4 py-3.5 border-l-2 {{ $activeTabKey === 'overview' ? 'border-[#E5C158] bg-[#121824] text-[#F4F7FB] font-semibold' : 'border-transparent text-[#94A3B8] hover:text-[#F4F7FB] hover:bg-[#121824]/50' }} transition cursor-pointer flex items-center justify-between"
                         >
-                            <span>01. Vue d'Ensemble &amp; SEPA</span>
+                            <span>01. Wallet, Rails &amp; ★ Prime</span>
                             <span class="text-[#E5C158]">→</span>
                         </button>
 
@@ -195,6 +225,18 @@
                             <span class="text-[#D8E5F8]">⚙</span>
                         </button>
                     </nav>
+
+                    @if($currentUser->isAdmin())
+                        <div class="mt-5 pt-5 border-t border-white/[0.08]">
+                            <a
+                                href="/admin"
+                                class="w-full h-11 px-4 bg-[#E5C158] text-[#030407] hover:bg-[#D8E5F8] font-mono text-xs font-bold uppercase tracking-wider inline-flex items-center justify-between transition"
+                            >
+                                <span>Back-Office Admin (/admin)</span>
+                                <span>↗</span>
+                            </a>
+                        </div>
+                    @endif
                 </div>
 
                 <!-- Sidebar Quick Role Simulator Buttons -->
@@ -221,23 +263,23 @@
             <!-- =============================================================
                  MAIN WORKSPACE (9 COLS) — 4 DISTINCT PANELS (ONLY 1 VISIBLE)
                  ============================================================= -->
-            <div class="lg:col-span-9 min-w-0 p-6 sm:p-8">
+            <div class="lg:col-span-9 p-6 sm:p-8">
 
                 <!-- =========================================================
-                     PANEL 1: VUE D'ENSEMBLE, DÉPÔT & RETRAIT SEPA (#cockpit-panel-overview)
+                     PANEL 1: VUE D'ENSEMBLE, PASS PRIME, DÉPÔT & RETRAIT MULTI-RAILS (#cockpit-panel-overview)
                      ========================================================= -->
                 <section
                     id="cockpit-panel-overview"
                     data-cockpit-panel="overview"
-                    class="{{ $activeTabKey === 'overview' ? '' : 'hidden' }} space-y-8 min-w-0"
+                    class="{{ $activeTabKey === 'overview' ? '' : 'hidden' }} space-y-8"
                 >
                     <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-white/[0.08] pb-5">
                         <div>
                             <div class="text-[10px] font-mono uppercase tracking-[0.2em] text-[#E5C158] mb-1">
-                                MODULE COCKPIT 01 // TRÉSORERIE &amp; TÉLÉMÉTRIE OPÉRATEUR
+                                MODULE COCKPIT 01 // ARCHITECTURE 100% WALLET &amp; RAILS CONFIGURABLES
                             </div>
                             <h1 class="font-display font-extrabold text-2xl sm:text-3xl text-[#F4F7FB] uppercase tracking-tight">
-                                VUE D'ENSEMBLE &amp; PORTEFEUILLE SÉQUESTRE
+                                PORTEFEUILLE, RAILS DE PAIEMENT &amp; PASS PRIME
                             </h1>
                         </div>
                         <span class="px-3 py-1 bg-[#080B11] border border-[#10B981]/40 text-[#10B981] font-mono text-xs tabular-nums">
@@ -276,25 +318,95 @@
                             <div id="kpi-elo-rating" class="text-2xl font-mono font-bold text-[#D8E5F8] tabular-nums mt-2">
                                 {{ $currentUser->elo_rating }} MMR
                             </div>
-                            <div class="text-[11px] font-mono text-[#D8E5F8] mt-1">DIVISION SOUVERAINE I</div>
+                            <div class="text-[11px] font-mono text-[#D8E5F8] mt-1">
+                                {{ $currentUser->is_prime ? '★ MEMBRE PRIME (0% FRAIS)' : 'COMPTE STANDARD' }}
+                            </div>
                         </div>
                     </div>
 
-                    <!-- Dual Financial Operations: Deposit (Credit) & SEPA Withdrawal (Debit) -->
+                    <!-- ★ VALKYR PRIME MEMBERSHIP CARD (19,00 € VIA WALLET — 0% RAIL FEES + +50 ELO) -->
+                    <div id="valkyr-prime-card" class="bg-[#080B11] border {{ $currentUser->is_prime ? 'border-[#E5C158]' : 'border-[#E5C158]/40' }} p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                        <div class="space-y-1.5">
+                            <div class="flex flex-wrap items-center gap-2 font-mono text-[10px]">
+                                <span class="px-2 py-0.5 bg-[#E5C158] text-[#030407] font-bold uppercase tracking-widest">
+                                    ★ PASS MEMBRE VALKYR PRIME
+                                </span>
+                                <span class="text-[#E5C158] tabular-nums font-semibold">19,00 € / 30 JOURS (DÉBITÉ DU WALLET)</span>
+                            </div>
+                            <h2 class="font-display font-extrabold text-xl text-[#F4F7FB] uppercase">
+                                EXONÉRATION 100 % DES FRAIS SUR TOUS LES RAILS DE DÉPÔT &amp; RETRAIT + BONUS +50 MMR
+                            </h2>
+                            <p class="text-xs font-mono text-[#94A3B8] leading-relaxed">
+                                Les abonnés <strong class="text-[#E5C158]">★ VALKYR PRIME</strong> bénéficient de <strong class="text-[#10B981]">0,00 € de frais</strong> sur les dépôts et retraits par Carte Bancaire, Crypto USDT/USDC et Bons OTC, ainsi que d'un boost immédiat de cote compétitive.
+                            </p>
+                        </div>
+
+                        <div class="shrink-0 w-full lg:w-auto">
+                            @if($currentUser->is_prime)
+                                <div class="px-4 py-3 bg-[#10B981]/15 border border-[#10B981]/50 text-[#10B981] font-mono text-xs font-bold uppercase tracking-wider text-center tabular-nums">
+                                    ✓ PASS ★ VALKYR PRIME ACTIF (0% FRAIS)
+                                </div>
+                            @else
+                                <form id="form-subscribe-prime" action="/wallets/subscribe-prime" method="POST">
+                                    @csrf
+                                    <input type="hidden" id="prime-idempotency-key" name="idempotency_key" value="prime:{{ $currentUser->id }}:{{ uniqid() }}" />
+                                    <button
+                                        type="submit"
+                                        id="subscribe-prime-submit-btn"
+                                        class="w-full sm:w-auto h-11 px-4 bg-[#E5C158] text-[#030407] hover:bg-[#D8E5F8] font-mono text-[11px] sm:text-xs font-bold uppercase tracking-wider rounded-none whitespace-nowrap cursor-pointer transition"
+                                    >
+                                        ★ Activer PRIME (19,00 €) ↗
+                                    </button>
+                                </form>
+                            @endif
+                        </div>
+                    </div>
+
+                    <!-- Dual Financial Operations: Deposit (Credit) & Withdrawal (Debit) with Configurable Payment Rails -->
+                    @php
+                        $depositRails = ($paymentRails ?? collect())->where('supports_deposit', true)->values();
+                        $withdrawRails = ($paymentRails ?? collect())->where('supports_withdrawal', true)->values();
+                    @endphp
                     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        <!-- Card A: Instant SEPA Deposit (POST /api/wallets/deposit) -->
+                        <!-- Card A: Multi-Rail Deposit (POST /api/wallets/deposit) -->
                         <div class="bg-[#080B11] border border-white/[0.08] p-6 flex flex-col justify-between">
                             <div>
                                 <div class="flex items-center justify-between gap-2 mb-4 pb-3 border-b border-white/[0.08]">
                                     <div>
-                                        <span class="text-[10px] font-mono uppercase tracking-widest text-[#10B981] block">CRÉDIT GRAND LIVRE // ENTRÉE</span>
-                                        <h2 class="font-display font-bold text-lg text-[#F4F7FB] uppercase">DÉPOSER DES FONDS (SEPA INSTANT)</h2>
+                                        <span class="text-[10px] font-mono uppercase tracking-widest text-[#10B981] block">CRÉDIT GRAND LIVRE // ENTRÉE EXTERNE</span>
+                                        <h2 class="font-display font-bold text-lg text-[#F4F7FB] uppercase">CRÉDITER MON WALLET (DÉPÔT)</h2>
                                     </div>
-                                    <span class="px-2 py-0.5 bg-[#10B981]/15 border border-[#10B981]/40 text-[#10B981] font-mono text-[10px] font-bold">0% FRAIS</span>
+                                    <span class="px-2 py-0.5 bg-[#10B981]/15 border border-[#10B981]/40 text-[#10B981] font-mono text-[10px] font-bold">
+                                        {{ $currentUser->is_prime ? '★ PRIME 0% FRAIS' : 'MULTI-RAILS' }}
+                                    </span>
                                 </div>
 
                                 <form id="form-wallet-deposit" action="/wallets/deposit" method="POST" class="space-y-4">
                                     @csrf
+                                    <div>
+                                        <label for="deposit-rail-select" class="block text-[10px] font-mono uppercase tracking-wider text-[#94A3B8] mb-1">
+                                            MÉTHODE DE DÉPÔT (<code class="text-[#10B981]">payment_rail_id</code>)
+                                        </label>
+                                        <select
+                                            id="deposit-rail-select"
+                                            name="payment_rail_id"
+                                            class="w-full h-11 px-3 bg-[#0C1018] border border-white/15 font-mono text-xs text-[#F4F7FB] rounded-none"
+                                        >
+                                            @foreach($depositRails as $rail)
+                                                <option
+                                                    value="{{ $rail->id }}"
+                                                    data-fee-bps="{{ $rail->deposit_fee_bps }}"
+                                                    data-fixed-fee-cents="{{ $rail->deposit_fixed_fee_cents }}"
+                                                    data-requires-approval="{{ $rail->requires_admin_approval ? '1' : '0' }}"
+                                                    data-delay-label="{{ $rail->settlement_delay_label }}"
+                                                    data-instructions="{{ $rail->account_instructions }}"
+                                                >
+                                                    {{ $rail->name }} — {{ $rail->requires_admin_approval ? '[MANUEL ADMIN]' : '[INSTANTANÉ]' }} ({{ number_format($rail->deposit_fee_bps / 100, 2, ',', ' ') }}% + {{ \App\Models\Wallet::formatCents((int) $rail->deposit_fixed_fee_cents) }})
+                                                </option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+
                                     <div>
                                         <label class="block text-[10px] font-mono uppercase tracking-wider text-[#64748B] mb-1.5">ALLOCATIONS RAPIDES</label>
                                         <div class="grid grid-cols-4 gap-2 font-mono text-xs tabular-nums">
@@ -305,61 +417,136 @@
                                         </div>
                                     </div>
 
-                                    <div>
-                                        <label for="deposit-amount-cents" class="block text-[10px] font-mono uppercase tracking-wider text-[#94A3B8] mb-1">
-                                            MONTANT EN CENTIMES (<code class="text-[#10B981]">amount_cents</code> — 10000 = 100,00 €)
-                                        </label>
-                                        <input
-                                            type="number"
-                                            id="deposit-amount-cents"
-                                            name="amount_cents"
-                                            min="100"
-                                            max="10000000"
-                                            step="1"
-                                            value="10000"
-                                            required
-                                            class="w-full h-11 px-3.5 bg-[#0C1018] border border-white/15 font-mono text-sm text-[#F4F7FB] tabular-nums focus:border-[#10B981] focus:outline-none rounded-none"
-                                        />
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <div>
+                                            <label for="deposit-amount-cents" class="block text-[10px] font-mono uppercase tracking-wider text-[#94A3B8] mb-1">
+                                                MONTANT BRUT (<code class="text-[#10B981]">amount_cents</code>)
+                                            </label>
+                                            <input
+                                                type="number"
+                                                id="deposit-amount-cents"
+                                                name="amount_cents"
+                                                min="100"
+                                                max="10000000"
+                                                step="1"
+                                                value="10000"
+                                                required
+                                                class="w-full h-11 px-3.5 bg-[#0C1018] border border-white/15 font-mono text-sm text-[#F4F7FB] tabular-nums focus:border-[#10B981] focus:outline-none rounded-none"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label for="deposit-reference-code" class="block text-[10px] font-mono uppercase tracking-wider text-[#94A3B8] mb-1">
+                                                RÉFÉRENCE / HASH TX (<code class="text-[#D8E5F8]">reference_code</code>)
+                                            </label>
+                                            <input
+                                                type="text"
+                                                id="deposit-reference-code"
+                                                name="reference_code"
+                                                value="REF-DEP-{{ strtoupper(\Illuminate\Support\Str::random(6)) }}"
+                                                class="w-full h-11 px-3 bg-[#0C1018] border border-white/15 font-mono text-xs text-[#F4F7FB] tabular-nums rounded-none"
+                                            />
+                                        </div>
                                     </div>
 
-                                    <div>
-                                        <label for="deposit-idempotency-key" class="block text-[10px] font-mono uppercase tracking-wider text-[#64748B] mb-1">
-                                            CLÉ D'IDEMPOTENCE (<code class="text-[#D8E5F8]">idempotency_key</code>)
-                                        </label>
-                                        <input
-                                            type="text"
-                                            id="deposit-idempotency-key"
-                                            name="idempotency_key"
-                                            value="dep:{{ uniqid() }}"
-                                            required
-                                            class="w-full h-10 px-3 bg-[#0C1018] border border-white/10 font-mono text-xs text-[#94A3B8] tabular-nums rounded-none"
-                                        />
+                                    <!-- Live Fee & Net Calculator Box -->
+                                    <div class="p-3 bg-[#0C1018] border border-white/10 font-mono text-xs space-y-1.5 tabular-nums">
+                                        <div class="flex justify-between text-[#94A3B8]">
+                                            <span>FRAIS DU RAIL :</span>
+                                            <strong id="deposit-calc-fee" class="text-[#E5C158]">0,00 €</strong>
+                                        </div>
+                                        <div class="flex justify-between text-[#F4F7FB]">
+                                            <span>NET CRÉDITÉ SUR WALLET :</span>
+                                            <strong id="deposit-calc-net" class="text-[#10B981]">100,00 €</strong>
+                                        </div>
+                                        <div class="flex justify-between text-[10px] text-[#64748B] pt-1 border-t border-white/[0.06]">
+                                            <span>MODE :</span>
+                                            <span id="deposit-calc-mode" class="text-[#D8E5F8]">INSTANTANÉ</span>
+                                        </div>
+                                        <div id="deposit-rail-instructions" class="text-[10px] text-[#94A3B8] pt-1">
+                                            {{ $depositRails->first()?->account_instructions }}
+                                        </div>
                                     </div>
+
+                                    <input
+                                        type="hidden"
+                                        id="deposit-idempotency-key"
+                                        name="idempotency_key"
+                                        value="dep:{{ uniqid() }}"
+                                    />
 
                                     <button
                                         type="submit"
                                         id="deposit-submit-btn"
                                         class="w-full h-12 px-5 bg-[#10B981] text-[#030407] hover:bg-[#E5C158] font-mono text-xs font-bold uppercase tracking-wider rounded-none whitespace-nowrap transition cursor-pointer"
                                     >
-                                        Créditer le Portefeuille (SEPA Instant) ↗
+                                        Créditer le Portefeuille ↗
                                     </button>
                                 </form>
                             </div>
                         </div>
 
-                        <!-- Card B: Outgoing SEPA Bank Withdrawal (POST /api/wallets/withdraw) -->
+                        <!-- Card B: Outgoing Bank / Crypto Withdrawal (POST /api/wallets/withdraw) -->
                         <div class="bg-[#080B11] border border-white/[0.08] p-6 flex flex-col justify-between">
                             <div>
                                 <div class="flex items-center justify-between gap-2 mb-4 pb-3 border-b border-white/[0.08]">
                                     <div>
-                                        <span class="text-[10px] font-mono uppercase tracking-widest text-[#E5C158] block">DÉBIT GRAND LIVRE // VIREMENT SORTANT</span>
-                                        <h2 class="font-display font-bold text-lg text-[#F4F7FB] uppercase">RETRAIT BANCAIRE SEPA (IBAN)</h2>
+                                        <span class="text-[10px] font-mono uppercase tracking-widest text-[#E5C158] block">DÉBIT GRAND LIVRE // SORTIE EXTERNE</span>
+                                        <h2 class="font-display font-bold text-lg text-[#F4F7FB] uppercase">RETIRER DEPUIS MON WALLET</h2>
                                     </div>
-                                    <span class="px-2 py-0.5 bg-[#E5C158]/15 border border-[#E5C158]/40 text-[#E5C158] font-mono text-[10px] font-bold">INSTANT</span>
+                                    <span class="px-2 py-0.5 bg-[#E5C158]/15 border border-[#E5C158]/40 text-[#E5C158] font-mono text-[10px] font-bold">
+                                        SEPA / CRYPTO / OTC
+                                    </span>
                                 </div>
 
                                 <form id="form-wallet-withdraw" action="/wallets/withdraw" method="POST" class="space-y-4">
                                     @csrf
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <div>
+                                            <label for="withdraw-rail-select" class="block text-[10px] font-mono uppercase tracking-wider text-[#94A3B8] mb-1">
+                                                RAIL DE RETRAIT (<code class="text-[#E5C158]">payment_rail_id</code>)
+                                            </label>
+                                            <select
+                                                id="withdraw-rail-select"
+                                                name="payment_rail_id"
+                                                class="w-full h-11 px-3 bg-[#0C1018] border border-white/15 font-mono text-xs text-[#F4F7FB] rounded-none"
+                                            >
+                                                @foreach($withdrawRails as $rail)
+                                                    <option
+                                                        value="{{ $rail->id }}"
+                                                        data-fee-bps="{{ $rail->withdrawal_fee_bps }}"
+                                                        data-fixed-fee-cents="{{ $rail->withdrawal_fixed_fee_cents }}"
+                                                        data-requires-approval="{{ $rail->requires_admin_approval ? '1' : '0' }}"
+                                                        data-delay-label="{{ $rail->settlement_delay_label }}"
+                                                    >
+                                                        {{ $rail->name }} ({{ number_format($rail->withdrawal_fee_bps / 100, 2, ',', ' ') }}% + {{ \App\Models\Wallet::formatCents((int) $rail->withdrawal_fixed_fee_cents) }})
+                                                    </option>
+                                                @endforeach
+                                            </select>
+                                        </div>
+
+                                        <div>
+                                            <label for="withdraw-saved-method-select" class="block text-[10px] font-mono uppercase tracking-wider text-[#94A3B8] mb-1">
+                                                COMPTE ENREGISTRÉ (<code class="text-[#D8E5F8]">user_payment_method_id</code>)
+                                            </label>
+                                            <select
+                                                id="withdraw-saved-method-select"
+                                                name="user_payment_method_id"
+                                                class="w-full h-11 px-3 bg-[#0C1018] border border-white/15 font-mono text-xs text-[#F4F7FB] rounded-none"
+                                            >
+                                                <option value="">-- Saisie manuelle ci-dessous --</option>
+                                                @foreach($myPaymentMethods ?? collect() as $pm)
+                                                    <option
+                                                        value="{{ $pm->id }}"
+                                                        data-rail-id="{{ $pm->payment_rail_id }}"
+                                                        data-identifier="{{ $pm->account_identifier }}"
+                                                    >
+                                                        {{ $pm->label }} ({{ $pm->account_identifier }})
+                                                    </option>
+                                                @endforeach
+                                            </select>
+                                        </div>
+                                    </div>
+
                                     <div>
                                         <label class="block text-[10px] font-mono uppercase tracking-wider text-[#64748B] mb-1.5">RETRAITS RAPIDES</label>
                                         <div class="grid grid-cols-4 gap-2 font-mono text-xs tabular-nums">
@@ -373,7 +560,7 @@
                                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                         <div>
                                             <label for="withdraw-amount-cents" class="block text-[10px] font-mono uppercase tracking-wider text-[#94A3B8] mb-1">
-                                                MONTANT (<code class="text-[#E5C158]">amount_cents</code>)
+                                                MONTANT BRUT (<code class="text-[#E5C158]">amount_cents</code>)
                                             </label>
                                             <input
                                                 type="number"
@@ -389,7 +576,7 @@
                                         </div>
                                         <div>
                                             <label for="withdraw-iban" class="block text-[10px] font-mono uppercase tracking-wider text-[#94A3B8] mb-1">
-                                                IBAN BÉNÉFICIAIRE (<code class="text-[#D8E5F8]">iban</code>)
+                                                IBAN / ADRESSE DESTINATION (<code class="text-[#D8E5F8]">iban</code>)
                                             </label>
                                             <input
                                                 type="text"
@@ -402,28 +589,142 @@
                                         </div>
                                     </div>
 
-                                    <div>
-                                        <label for="withdraw-idempotency-key" class="block text-[10px] font-mono uppercase tracking-wider text-[#64748B] mb-1">
-                                            CLÉ D'IDEMPOTENCE (<code class="text-[#D8E5F8]">idempotency_key</code>)
-                                        </label>
-                                        <input
-                                            type="text"
-                                            id="withdraw-idempotency-key"
-                                            name="idempotency_key"
-                                            value="wd:{{ uniqid() }}"
-                                            required
-                                            class="w-full h-10 px-3 bg-[#0C1018] border border-white/10 font-mono text-xs text-[#94A3B8] tabular-nums rounded-none"
-                                        />
+                                    <!-- Live Fee & Net Calculator Box -->
+                                    <div class="p-3 bg-[#0C1018] border border-white/10 font-mono text-xs space-y-1.5 tabular-nums">
+                                        <div class="flex justify-between text-[#94A3B8]">
+                                            <span>FRAIS DE RETRAIT :</span>
+                                            <strong id="withdraw-calc-fee" class="text-[#E5C158]">0,00 €</strong>
+                                        </div>
+                                        <div class="flex justify-between text-[#F4F7FB]">
+                                            <span>NET VERSÉ AU BÉNÉFICIAIRE :</span>
+                                            <strong id="withdraw-calc-net" class="text-[#10B981]">50,00 €</strong>
+                                        </div>
+                                        <div class="flex justify-between text-[10px] text-[#64748B] pt-1 border-t border-white/[0.06]">
+                                            <span>MODE :</span>
+                                            <span id="withdraw-calc-mode" class="text-[#D8E5F8]">INSTANTANÉ</span>
+                                        </div>
                                     </div>
+
+                                    <input
+                                        type="hidden"
+                                        id="withdraw-idempotency-key"
+                                        name="idempotency_key"
+                                        value="wd:{{ uniqid() }}"
+                                    />
 
                                     <button
                                         type="submit"
                                         id="withdraw-submit-btn"
                                         class="w-full h-12 px-5 bg-[#E5C158] text-[#030407] hover:bg-[#D8E5F8] font-mono text-xs font-bold uppercase tracking-wider rounded-none whitespace-nowrap transition cursor-pointer"
                                     >
-                                        Exécuter le Virement SEPA Sortant ↗
+                                        Exécuter le Retrait depuis mon Wallet ↗
                                     </button>
                                 </form>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SAVED BENEFICIARY PAYMENT METHODS & FUNDING REQUESTS TRACKER -->
+                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                        <!-- Left 6 Cols: Saved Payment Methods ($myPaymentMethods) -->
+                        <div class="lg:col-span-6 bg-[#080B11] border border-white/[0.08] p-6 space-y-4">
+                            <div>
+                                <div class="text-[10px] font-mono uppercase tracking-widest text-[#D8E5F8]">COMPTES BÉNÉFICIAIRES VÉRIFIÉS</div>
+                                <h3 class="font-display font-bold text-lg text-[#F4F7FB] uppercase">MES MOYENS DE PAIEMENT ENREGISTRÉS ({{ ($myPaymentMethods ?? collect())->count() }})</h3>
+                            </div>
+
+                            <div id="saved-payment-methods-list" class="space-y-2 font-mono text-xs">
+                                @forelse($myPaymentMethods ?? collect() as $pm)
+                                    <div class="p-3 bg-[#0C1018] border border-white/10 flex items-center justify-between gap-3">
+                                        <div class="min-w-0">
+                                            <div class="flex items-center gap-2">
+                                                <strong class="text-[#F4F7FB] truncate">{{ $pm->label }}</strong>
+                                                @if($pm->is_default)
+                                                    <span class="px-1.5 py-0.5 text-[9px] bg-[#E5C158]/20 text-[#E5C158] border border-[#E5C158]/40">DÉFAUT</span>
+                                                @endif
+                                            </div>
+                                            <div class="text-[11px] text-[#94A3B8] truncate tabular-nums">
+                                                {{ $pm->paymentRail?->code ?? 'RAIL' }} · {{ $pm->account_identifier }}
+                                            </div>
+                                        </div>
+                                        <form action="/payment-methods/{{ $pm->id }}/delete" method="POST" data-delete-payment-method="{{ $pm->id }}">
+                                            @csrf
+                                            <button type="submit" class="h-8 px-2.5 bg-[#EF4444]/15 border border-[#EF4444]/40 text-[#EF4444] hover:bg-[#EF4444] hover:text-[#030407] text-[10px] font-bold uppercase cursor-pointer transition">
+                                                Supprimer ✕
+                                            </button>
+                                        </form>
+                                    </div>
+                                @empty
+                                    <div class="p-4 bg-[#0C1018] border border-white/[0.06] text-[#64748B] text-center">
+                                        Aucun compte enregistré. Ajoutez un IBAN ou Wallet Crypto ci-dessous.
+                                    </div>
+                                @endforelse
+                            </div>
+
+                            <!-- Add New Saved Payment Method Form -->
+                            <form id="form-store-payment-method" action="/payment-methods" method="POST" class="pt-3 border-t border-white/[0.08] space-y-3 font-mono text-xs">
+                                @csrf
+                                <div class="text-[10px] uppercase tracking-wider text-[#E5C158]">+ AJOUTER UN COMPTE BÉNÉFICIAIRE</div>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                    <select name="payment_rail_id" class="h-10 px-2.5 bg-[#0C1018] border border-white/15 text-[#F4F7FB]">
+                                        @foreach($paymentRails ?? collect() as $rail)
+                                            <option value="{{ $rail->id }}">{{ $rail->name }}</option>
+                                        @endforeach
+                                    </select>
+                                    <input type="text" name="label" placeholder="Intitulé (ex: BNP Paribas Pro)" required class="h-10 px-3 bg-[#0C1018] border border-white/15 text-[#F4F7FB]" />
+                                </div>
+                                <div class="flex flex-col sm:flex-row gap-2.5">
+                                    <input type="text" name="account_identifier" placeholder="IBAN FR76... ou Adresse 0x..." required class="flex-1 min-w-0 h-10 px-3 bg-[#0C1018] border border-white/15 text-[#F4F7FB] tabular-nums" />
+                                    <button type="submit" class="h-10 px-4 bg-[#D8E5F8] text-[#030407] hover:bg-[#E5C158] font-bold uppercase tracking-wider whitespace-nowrap cursor-pointer transition">
+                                        Enregistrer +
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+
+                        <!-- Right 6 Cols: My Funding Requests Status ($myFundingRequests) -->
+                        <div class="lg:col-span-6 bg-[#080B11] border border-white/[0.08] p-6 space-y-4">
+                            <div>
+                                <div class="text-[10px] font-mono uppercase tracking-widest text-[#10B981]">JOURNAL DE RÈGLEMENT DES RAILS</div>
+                                <h3 class="font-display font-bold text-lg text-[#F4F7FB] uppercase">SUIVI DE MES DEMANDES DÉPÔT / RETRAIT ({{ ($myFundingRequests ?? collect())->count() }})</h3>
+                            </div>
+
+                            <div class="overflow-x-auto border border-white/[0.08] bg-[#0C1018]">
+                                <table class="w-full text-left border-collapse font-mono text-xs tabular-nums">
+                                    <thead>
+                                        <tr class="border-b border-white/10 bg-[#080B11] text-[10px] uppercase text-[#64748B] whitespace-nowrap">
+                                            <th class="px-3 py-2.5">ID</th>
+                                            <th class="px-3 py-2.5">TYPE &amp; RAIL</th>
+                                            <th class="px-3 py-2.5 text-right">BRUT</th>
+                                            <th class="px-3 py-2.5 text-right">NET</th>
+                                            <th class="px-3 py-2.5">STATUT</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="my-funding-requests-tbody" class="divide-y divide-white/[0.05]">
+                                        @forelse($myFundingRequests ?? collect() as $fReq)
+                                            <tr class="whitespace-nowrap">
+                                                <td class="px-3 py-2.5 text-[#64748B]">#{{ $fReq->id }}</td>
+                                                <td class="px-3 py-2.5">
+                                                    <span class="font-bold {{ $fReq->direction === 'DEPOSIT' ? 'text-[#10B981]' : 'text-[#E5C158]' }}">{{ $fReq->direction }}</span>
+                                                    <span class="text-[10px] text-[#94A3B8] block">{{ $fReq->paymentRail?->code ?? 'RAIL' }}</span>
+                                                </td>
+                                                <td class="px-3 py-2.5 text-right text-[#F4F7FB]">{{ \App\Models\Wallet::formatCents((int) $fReq->gross_amount_cents) }}</td>
+                                                <td class="px-3 py-2.5 text-right font-bold text-[#10B981]">{{ \App\Models\Wallet::formatCents((int) $fReq->net_amount_cents) }}</td>
+                                                <td class="px-3 py-2.5">
+                                                    <span class="px-2 py-0.5 text-[10px] font-bold border {{ $fReq->status === 'SETTLED' ? 'border-[#10B981]/40 text-[#10B981]' : ($fReq->status === 'PENDING_ADMIN' ? 'border-[#E5C158] text-[#E5C158]' : 'border-[#EF4444]/40 text-[#EF4444]') }}">
+                                                        {{ $fReq->status }}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        @empty
+                                            <tr>
+                                                <td colspan="5" class="px-3 py-6 text-center text-[#64748B]">
+                                                    Aucune demande de financement soumise.
+                                                </td>
+                                            </tr>
+                                        @endforelse
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                     </div>
@@ -464,76 +765,87 @@
                     <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-white/[0.08] pb-5">
                         <div>
                             <div class="text-[10px] font-mono uppercase tracking-[0.2em] text-[#E5C158] mb-1">
-                                MODULE COCKPIT 02 // ENGAGEMENTS COMPÉTITIFS &amp; BUY-INS
+                                MODULE COCKPIT 02 // ENGAGEMENTS ACTIFS &amp; HISTORIQUE COMPÉTITIF
                             </div>
                             <h2 class="font-display font-extrabold text-2xl sm:text-3xl text-[#F4F7FB] uppercase tracking-tight">
-                                MES ARÈNES &amp; INSCRIPTIONS EN SÉQUESTRE
+                                MES ARÈNES &amp; INSCRIPTIONS SÉQUESTRÉES ({{ $myRegistrations->count() }})
                             </h2>
                         </div>
-                        <a href="/#arenas-catalog" class="h-10 px-4 bg-[#121824] border border-white/15 hover:border-[#E5C158] text-[#F4F7FB] font-mono text-xs font-semibold uppercase tracking-wider inline-flex items-center whitespace-nowrap">
-                            Catalogue Complet Public ↗
+                        <a
+                            href="/"
+                            class="h-10 px-4 bg-[#D8E5F8] text-[#030407] hover:bg-[#E5C158] font-mono text-xs font-bold uppercase tracking-wider inline-flex items-center rounded-none whitespace-nowrap transition"
+                        >
+                            Explorer le Catalogue Global ↗
                         </a>
                     </div>
 
-                    <!-- Operator's Registered Tournaments Table / Cards -->
-                    <div>
-                        <h3 class="font-mono text-xs uppercase tracking-widest text-[#94A3B8] mb-3">
-                            INSCRIPTIONS ACTIVES &amp; HISTORIQUE DE SÉQUESTRE (<span id="my-registrations-count" class="text-[#E5C158] tabular-nums">{{ $myRegistrations->count() }}</span>)
-                        </h3>
-
-                        <div id="dashboard-my-registrations-list" class="space-y-3">
-                            @forelse($myRegistrations as $reg)
-                                @php
-                                    $t = $reg->tournament;
-                                @endphp
-                                @if($t)
-                                    <div class="bg-[#080B11] border border-white/[0.08] p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                                        <div>
-                                            <div class="flex flex-wrap items-center gap-2 mb-1.5 font-mono text-[10px]">
-                                                <span class="px-2 py-0.5 bg-[#121824] border border-white/10 text-[#D8E5F8]">{{ $t->game }} // {{ $t->format }}</span>
-                                                <span class="px-2 py-0.5 bg-[#E5C158]/15 border border-[#E5C158]/40 text-[#E5C158]">CLASSE : {{ $reg->loadout_class }}</span>
-                                                <span class="px-2 py-0.5 bg-[#10B981]/15 border border-[#10B981]/40 text-[#10B981]">{{ $reg->status }}</span>
-                                            </div>
-                                            <h4 class="font-display font-bold text-lg text-[#F4F7FB]">{{ $t->title }}</h4>
-                                            <div class="text-xs font-mono text-[#94A3B8] tabular-nums mt-1">
-                                                BUY-IN VERROUILLÉ : <strong class="text-[#E5C158]">{{ \App\Models\Wallet::formatCents($reg->paid_entry_fee_cents) }}</strong>
-                                                · POOL TOTAL : <strong class="text-[#10B981]">{{ \App\Models\Wallet::formatCents($t->escrow_pool_cents) }}</strong>
-                                                · STATUT ARÈNE : <strong>{{ $t->status }}</strong>
-                                            </div>
+                    <!-- My Active & Past Tournament Registrations -->
+                    <div class="space-y-4">
+                        @forelse($myRegistrations as $reg)
+                            @php
+                                $t = $reg->tournament;
+                            @endphp
+                            @if($t)
+                                <div class="bg-[#080B11] border border-white/[0.08] p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                    <div class="space-y-1.5">
+                                        <div class="flex flex-wrap items-center gap-2 font-mono text-[11px]">
+                                            <span class="px-2 py-0.5 bg-[#121824] border border-white/10 text-[#D8E5F8]">{{ $t->game }}</span>
+                                            <span class="px-2 py-0.5 bg-[#0C1018] border border-white/10 text-[#94A3B8]">{{ $t->format }}</span>
+                                            <span class="px-2 py-0.5 bg-[#E5C158]/15 border border-[#E5C158]/40 text-[#E5C158] font-bold">STATUT TOURNOI : {{ $t->status }}</span>
+                                            <span class="px-2 py-0.5 bg-[#10B981]/15 border border-[#10B981]/40 text-[#10B981] font-bold">INSCRIPTION : {{ $reg->status }}</span>
                                         </div>
-                                        <div class="flex items-center gap-3 shrink-0">
-                                            <a
-                                                href="/tournaments/{{ $t->slug }}"
-                                                class="h-11 px-5 bg-[#D8E5F8] text-[#030407] hover:bg-[#E5C158] font-mono text-xs font-bold uppercase tracking-wider inline-flex items-center justify-center rounded-none whitespace-nowrap transition"
-                                            >
-                                                Ouvrir l'Arène ↗
-                                            </a>
+                                        <h3 class="font-display font-bold text-lg text-[#F4F7FB]">
+                                            {{ $t->title }}
+                                        </h3>
+                                        <div class="text-xs font-mono text-[#94A3B8] tabular-nums">
+                                            Buy-in payé : <strong class="text-[#F4F7FB]">{{ \App\Models\Wallet::formatCents($reg->paid_entry_fee_cents) }}</strong>
+                                            · Classe engagée : <strong class="text-[#D8E5F8]">{{ $reg->loadout_class }}</strong>
+                                            @if($reg->prize_won_cents > 0)
+                                                · Gain Podium : <strong class="text-[#10B981]">+{{ \App\Models\Wallet::formatCents($reg->prize_won_cents) }} ({{ $reg->status }})</strong>
+                                            @endif
                                         </div>
                                     </div>
-                                @endif
-                            @empty
-                                <div class="bg-[#080B11] border border-white/[0.08] p-8 text-center font-mono text-xs text-[#64748B]">
-                                    Vous n'êtes inscrit à aucun tournoi pour le moment. Rejoignez une arène ouverte ci-dessous.
+
+                                    <div class="flex flex-wrap items-center gap-3 shrink-0">
+                                        <a
+                                            href="/tournaments/{{ $t->slug }}"
+                                            class="h-11 px-4 bg-[#D8E5F8] text-[#030407] hover:bg-[#E5C158] font-mono text-xs font-bold uppercase tracking-wider inline-flex items-center justify-center rounded-none whitespace-nowrap transition"
+                                        >
+                                            Ouvrir l'Arène ↗
+                                        </a>
+                                    </div>
                                 </div>
-                            @endforelse
-                        </div>
+                            @endif
+                        @empty
+                            <div class="bg-[#080B11] border border-white/[0.08] p-8 text-center">
+                                <div class="text-xs font-mono uppercase tracking-widest text-[#E5C158] mb-2">AUCUNE INSCRIPTION ACTIVE</div>
+                                <p class="text-sm text-[#94A3B8] max-w-md mx-auto">
+                                    Vous n'avez pas encore verrouillé de Buy-in dans une arène. Sélectionnez un tournoi ouvert ci-dessous pour engager votre escouade.
+                                </p>
+                            </div>
+                        @endforelse
                     </div>
 
-                    <!-- Open Arenas for Immediate 1-Click Buy-In -->
-                    <div class="pt-6 border-t border-white/[0.08]">
-                        <h3 class="font-mono text-xs uppercase tracking-widest text-[#10B981] mb-4">
-                            ARÈNES OUVERTES AU BUY-IN IMMÉDIAT (SÉQUESTRE ACTIF)
+                    <!-- Quick Join Open Arenas Directly from Cockpit -->
+                    <div class="pt-4 border-t border-white/[0.08]">
+                        <h3 class="font-display font-bold text-lg text-[#F4F7FB] uppercase mb-4">
+                            ARÈNES OUVERTES DISPONIBLES À L'ENGAGEMENT IMMÉDIAT
                         </h3>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             @foreach($tournaments as $t)
                                 @php
                                     $alreadyIn = $t->registrations->contains('user_id', $currentUser->id);
                                 @endphp
-                                <div class="bg-[#080B11] border border-white/[0.08] p-5 flex flex-col justify-between gap-4">
+                                <div class="bg-[#080B11] border {{ $t->is_featured ? 'border-[#E5C158]/50' : 'border-white/[0.08]' }} p-5 flex flex-col justify-between gap-4">
                                     <div>
                                         <div class="flex items-center justify-between gap-2 mb-2 font-mono text-[10px]">
                                             <span class="text-[#D8E5F8]">{{ $t->game }} · {{ $t->format }}</span>
-                                            <span class="px-2 py-0.5 border {{ $t->status === 'OPEN' ? 'border-[#10B981]/40 text-[#10B981]' : 'border-white/15 text-[#94A3B8]' }}">{{ $t->status }}</span>
+                                            <div class="flex items-center gap-1.5">
+                                                @if($t->is_featured)
+                                                    <span class="px-2 py-0.5 bg-[#E5C158] text-[#030407] font-bold">★ FEATURED</span>
+                                                @endif
+                                                <span class="px-2 py-0.5 border {{ $t->status === 'OPEN' ? 'border-[#10B981]/40 text-[#10B981]' : 'border-white/15 text-[#94A3B8]' }}">{{ $t->status }}</span>
+                                            </div>
                                         </div>
                                         <h4 class="font-display font-bold text-base text-[#F4F7FB] mb-2">{{ $t->title }}</h4>
                                         <div class="grid grid-cols-2 gap-2 font-mono text-xs tabular-nums bg-[#0C1018] p-3 border border-white/[0.06]">
@@ -613,7 +925,7 @@
                             BUY-INS (SÉQUESTRE)
                         </button>
                         <button type="button" data-ledger-filter="PAYOUT" class="h-9 px-3 border border-white/10 bg-[#080B11] text-[#94A3B8] hover:text-[#F4F7FB] uppercase cursor-pointer">
-                            GAINS (PAYOUT)
+                            GAINS &amp; REVSHARE
                         </button>
                         <button type="button" data-ledger-filter="REFUND" class="h-9 px-3 border border-white/10 bg-[#080B11] text-[#94A3B8] hover:text-[#F4F7FB] uppercase cursor-pointer">
                             REMBOURSEMENTS (REFUND)
@@ -621,21 +933,21 @@
                     </div>
 
                     <!-- Ledger Table -->
-                    <div class="w-full overflow-x-auto border border-white/[0.08] bg-[#080B11]">
-                        <table class="w-full min-w-[820px] text-left border-collapse tabular-nums">
+                    <div class="overflow-x-auto border border-white/[0.08] bg-[#080B11]">
+                        <table class="w-full text-left border-collapse">
                             <thead>
-                                <tr class="border-b border-white/10 bg-[#0C1018] font-mono text-[10px] uppercase tracking-wider text-[#64748B] whitespace-nowrap tabular-nums">
-                                    <th class="px-3.5 py-3 whitespace-nowrap tabular-nums">ID</th>
-                                    <th class="px-3.5 py-3 whitespace-nowrap tabular-nums">TYPE OPÉRATION</th>
-                                    <th class="px-3.5 py-3 min-w-[220px] max-w-[300px] whitespace-nowrap tabular-nums">DESCRIPTION</th>
-                                    <th class="px-3.5 py-3 text-right whitespace-nowrap tabular-nums">SOLDE AVANT</th>
-                                    <th class="px-3.5 py-3 text-right whitespace-nowrap tabular-nums">DÉBIT</th>
-                                    <th class="px-3.5 py-3 text-right whitespace-nowrap tabular-nums">CRÉDIT</th>
-                                    <th class="px-3.5 py-3 text-right whitespace-nowrap tabular-nums">SOLDE APRÈS</th>
-                                    <th class="pl-3.5 pr-6 py-3 whitespace-nowrap tabular-nums">CLÉ D'IDEMPOTENCE</th>
+                                <tr class="border-b border-white/10 bg-[#0C1018] font-mono text-[10px] uppercase tracking-wider text-[#64748B]">
+                                    <th class="px-3.5 py-3">ID</th>
+                                    <th class="px-3.5 py-3">TYPE OPÉRATION</th>
+                                    <th class="px-3.5 py-3">DESCRIPTION</th>
+                                    <th class="px-3.5 py-3 text-right">SOLDE AVANT</th>
+                                    <th class="px-3.5 py-3 text-right">DÉBIT</th>
+                                    <th class="px-3.5 py-3 text-right">CRÉDIT</th>
+                                    <th class="px-3.5 py-3 text-right">SOLDE APRÈS</th>
+                                    <th class="px-3.5 py-3">CLÉ D'IDEMPOTENCE</th>
                                 </tr>
                             </thead>
-                            <tbody id="ledger-entries-tbody" class="divide-y divide-white/[0.05] font-mono text-xs whitespace-nowrap tabular-nums">
+                            <tbody id="ledger-entries-tbody" class="divide-y divide-white/[0.05] font-mono text-xs tabular-nums">
                                 <!-- Hydrated & filtered by app.js -->
                             </tbody>
                         </table>
@@ -643,7 +955,7 @@
                 </section>
 
                 <!-- =========================================================
-                     PANEL 4: CONSOLE ORGANISATEUR & ARBITRAGE (#cockpit-panel-organizer)
+                     PANEL 4: CONSOLE ORGANISATEUR, REVSHARE, BOOSTS & ARBITRAGE (#cockpit-panel-organizer)
                      ========================================================= -->
                 <section
                     id="cockpit-panel-organizer"
@@ -653,10 +965,10 @@
                     <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-white/[0.08] pb-5">
                         <div>
                             <div class="text-[10px] font-mono uppercase tracking-[0.2em] text-[#D8E5F8] mb-1">
-                                MODULE COCKPIT 04 // CRÉATION DE LIGUES &amp; ARBITRAGE 60/30/10
+                                MODULE COCKPIT 04 // CRÉATION DE LIGUES, REVSHARE ORGANISATEUR &amp; BOOSTS ★ FEATURED
                             </div>
                             <h2 class="font-display font-extrabold text-2xl sm:text-3xl text-[#F4F7FB] uppercase tracking-tight">
-                                CONSOLE ORGANISATEUR &amp; HOMOLOGATION
+                                CONSOLE ORGANISATEUR &amp; MONÉTISATION
                             </h2>
                         </div>
                         <span class="px-3 py-1 bg-[#080B11] border border-[#E5C158]/40 text-[#E5C158] font-mono text-xs">
@@ -682,9 +994,9 @@
                     @endif
 
                     <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
-                        <!-- Left 5 Cols: Create New League / Tournament Form -->
+                        <!-- Left 5 Cols: Create New League / Tournament Form with Rake & Organizer RevShare -->
                         <div class="xl:col-span-5 bg-[#080B11] border border-white/[0.08] p-6">
-                            <div class="text-[10px] font-mono uppercase tracking-widest text-[#E5C158] mb-1">NOUVEAU SÉQUESTRE</div>
+                            <div class="text-[10px] font-mono uppercase tracking-widest text-[#E5C158] mb-1">NOUVEAU SÉQUESTRE &amp; REVSHARE</div>
                             <h3 class="font-display font-bold text-lg text-[#F4F7FB] uppercase mb-4">OUVRIR UNE ARÈNE / LIGUE PRIVÉE</h3>
 
                             <form id="form-create-tournament" action="/tournaments" method="POST" class="space-y-4">
@@ -749,6 +1061,37 @@
                                     </div>
                                 </div>
 
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label for="create-rake-bps" class="block text-[10px] font-mono uppercase tracking-wider text-[#94A3B8] mb-1">RAKE TOTAL (BPS)</label>
+                                        <input
+                                            type="number"
+                                            id="create-rake-bps"
+                                            name="rake_bps"
+                                            min="100"
+                                            max="2000"
+                                            step="50"
+                                            value="800"
+                                            required
+                                            class="w-full h-11 px-3 bg-[#0C1018] border border-white/15 font-mono text-sm text-[#E5C158] tabular-nums rounded-none"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label for="create-org-share-bps" class="block text-[10px] font-mono uppercase tracking-wider text-[#94A3B8] mb-1">REVSHARE ORG (BPS)</label>
+                                        <input
+                                            type="number"
+                                            id="create-org-share-bps"
+                                            name="organizer_share_bps"
+                                            min="0"
+                                            max="1000"
+                                            step="25"
+                                            value="200"
+                                            required
+                                            class="w-full h-11 px-3 bg-[#0C1018] border border-white/15 font-mono text-sm text-[#D8E5F8] tabular-nums rounded-none"
+                                        />
+                                    </div>
+                                </div>
+
                                 <button
                                     type="submit"
                                     id="create-tournament-submit-btn"
@@ -759,48 +1102,81 @@
                             </form>
                         </div>
 
-                        <!-- Right 7 Cols: Manage & Settle Existing Arenas -->
+                        <!-- Right 7 Cols: Manage, Boost, Sponsor & Settle Existing Arenas -->
                         <div class="xl:col-span-7 bg-[#080B11] border border-white/[0.08] p-6">
-                            <div class="text-[10px] font-mono uppercase tracking-widest text-[#10B981] mb-1">SUPERVISION &amp; ARBITRAGE</div>
-                            <h3 class="font-display font-bold text-lg text-[#F4F7FB] uppercase mb-4">CLÔTURE 60/30/10 &amp; REMBOURSEMENT INTÉGRAL</h3>
+                            <div class="text-[10px] font-mono uppercase tracking-widest text-[#10B981] mb-1">SUPERVISION, BOOSTS ★ FEATURED &amp; ABONDEMENTS</div>
+                            <h3 class="font-display font-bold text-lg text-[#F4F7FB] uppercase mb-4">PILOTAGE DES ARÈNES &amp; CLÔTURE 60/30/10</h3>
 
-                            <div class="space-y-3">
+                            <div class="space-y-4">
                                 @foreach($tournaments as $t)
                                     @php
                                         $canManageT = $currentUser->role === 'ADMIN' || ($currentUser->role === 'ORGANIZER' && (int) $t->organizer_id === (int) $currentUser->id);
                                     @endphp
-                                    <div class="p-4 bg-[#0C1018] border border-white/[0.08] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                                        <div class="min-w-0">
-                                            <div class="flex flex-wrap items-center gap-2 mb-1 font-mono text-[10px]">
-                                                <span class="px-2 py-0.5 bg-[#080B11] border border-white/10 text-[#D8E5F8]">{{ $t->status }}</span>
-                                                @if($canManageT)
-                                                    <span class="px-2 py-0.5 bg-[#E5C158]/15 border border-[#E5C158]/40 text-[#E5C158]">AUTORISÉ // PROPRIÉTAIRE OU ADMIN</span>
-                                                @else
-                                                    <span class="px-2 py-0.5 bg-white/5 border border-white/10 text-[#64748B]">LECTURE SEULE // ORG: {{ $t->organizer?->gamertag }}</span>
-                                                @endif
+                                    <div class="p-4 bg-[#0C1018] border {{ $t->is_featured ? 'border-[#E5C158]/50' : 'border-white/[0.08]' }} space-y-3">
+                                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                            <div class="min-w-0">
+                                                <div class="flex flex-wrap items-center gap-2 mb-1 font-mono text-[10px]">
+                                                    <span class="px-2 py-0.5 bg-[#080B11] border border-white/10 text-[#D8E5F8]">{{ $t->status }}</span>
+                                                    @if($t->is_featured)
+                                                        <span class="px-2 py-0.5 bg-[#E5C158] text-[#030407] font-bold">★ FEATURED // SPONSORED</span>
+                                                    @endif
+                                                    @if($canManageT)
+                                                        <span class="px-2 py-0.5 bg-[#E5C158]/15 border border-[#E5C158]/40 text-[#E5C158]">AUTORISÉ</span>
+                                                    @else
+                                                        <span class="px-2 py-0.5 bg-white/5 border border-white/10 text-[#64748B]">ORG: {{ $t->organizer?->gamertag }}</span>
+                                                    @endif
+                                                </div>
+                                                <h4 class="font-display font-bold text-base text-[#F4F7FB] truncate">{{ $t->title }}</h4>
+                                                <div class="text-xs font-mono text-[#94A3B8] tabular-nums mt-0.5">
+                                                    Pool : <strong class="text-[#E5C158]">{{ \App\Models\Wallet::formatCents($t->escrow_pool_cents) }}</strong>
+                                                    · Rake : <strong>{{ number_format($t->rake_bps / 100, 2, ',', ' ') }}%</strong> (RevShare Org : <strong class="text-[#D8E5F8]">{{ number_format($t->organizer_share_bps / 100, 2, ',', ' ') }}%</strong>)
+                                                    · Inscrits : <strong>{{ $t->registered_count }}/{{ $t->max_participants }}</strong>
+                                                </div>
                                             </div>
-                                            <h4 class="font-display font-bold text-base text-[#F4F7FB] truncate">{{ $t->title }}</h4>
-                                            <div class="text-xs font-mono text-[#94A3B8] tabular-nums mt-0.5">
-                                                Pool Séquestré : <strong class="text-[#E5C158]">{{ \App\Models\Wallet::formatCents($t->escrow_pool_cents) }}</strong>
-                                                · Inscrits : <strong>{{ $t->registered_count }}/{{ $t->max_participants }}</strong>
+
+                                            <div class="flex items-center gap-2 shrink-0">
+                                                <button
+                                                    type="button"
+                                                    data-open-detail="{{ $t->id }}"
+                                                    class="h-10 px-3.5 bg-[#E5C158] text-[#030407] hover:bg-[#D8E5F8] font-mono text-[11px] font-bold uppercase tracking-wider whitespace-nowrap cursor-pointer transition"
+                                                >
+                                                    Arbitrer 60/30/10 ⤢
+                                                </button>
+                                                <a
+                                                    href="/tournaments/{{ $t->slug }}"
+                                                    class="h-10 px-3.5 bg-[#080B11] border border-white/15 hover:border-[#D8E5F8] text-[#F4F7FB] font-mono text-[11px] font-semibold uppercase tracking-wider inline-flex items-center whitespace-nowrap transition"
+                                                >
+                                                    Page Arène ↗
+                                                </a>
                                             </div>
                                         </div>
 
-                                        <div class="flex items-center gap-2 shrink-0">
-                                            <button
-                                                type="button"
-                                                data-open-detail="{{ $t->id }}"
-                                                class="h-10 px-3.5 bg-[#E5C158] text-[#030407] hover:bg-[#D8E5F8] font-mono text-[11px] font-bold uppercase tracking-wider whitespace-nowrap cursor-pointer transition"
-                                            >
-                                                Arbitrer 60/30/10 ⤢
-                                            </button>
-                                            <a
-                                                href="/tournaments/{{ $t->slug }}"
-                                                class="h-10 px-3.5 bg-[#080B11] border border-white/15 hover:border-[#D8E5F8] text-[#F4F7FB] font-mono text-[11px] font-semibold uppercase tracking-wider inline-flex items-center whitespace-nowrap transition"
-                                            >
-                                                Page Arène ↗
-                                            </a>
-                                        </div>
+                                        @if($canManageT && $t->status === 'OPEN')
+                                            <div class="pt-3 border-t border-white/[0.06] flex flex-wrap items-center justify-between gap-3 font-mono text-xs">
+                                                <!-- Action 1: ★ Boost Arena (25,00 € via Wallet) -->
+                                                @if(!$t->is_featured)
+                                                    <form action="/tournaments/{{ $t->id }}/boost" method="POST" data-boost-tournament="{{ $t->id }}" class="inline">
+                                                        @csrf
+                                                        <input type="hidden" name="idempotency_key" value="boost:t{{ $t->id }}:{{ uniqid() }}" />
+                                                        <button type="submit" class="h-9 px-3 bg-[#E5C158]/20 border border-[#E5C158] text-[#E5C158] hover:bg-[#E5C158] hover:text-[#030407] font-bold text-[11px] uppercase tracking-wider cursor-pointer transition whitespace-nowrap">
+                                                            ★ Boost Arène (25,00 €) ↗
+                                                        </button>
+                                                    </form>
+                                                @else
+                                                    <span class="text-[11px] text-[#E5C158] font-bold">★ Boost Visibilité Actif (25,00 €)</span>
+                                                @endif
+
+                                                <!-- Action 2: + Sponsor Pool Injection (via Wallet) -->
+                                                <form action="/tournaments/{{ $t->id }}/sponsor" method="POST" data-sponsor-tournament="{{ $t->id }}" class="flex flex-wrap sm:flex-nowrap items-center gap-2">
+                                                    @csrf
+                                                    <input type="hidden" name="idempotency_key" value="sponsor:t{{ $t->id }}:{{ uniqid() }}" />
+                                                    <input type="number" name="amount_cents" value="5000" min="100" max="10000000" step="500" class="w-20 h-9 px-2 bg-[#080B11] border border-white/15 text-[#10B981] font-bold tabular-nums" title="Montant en centimes (5000 = 50,00 €)" />
+                                                    <button type="submit" class="h-9 px-3 bg-[#10B981] text-[#030407] hover:bg-[#E5C158] font-bold text-[11px] uppercase tracking-wider cursor-pointer transition whitespace-nowrap">
+                                                        + Sponsor ↗
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        @endif
                                     </div>
                                 @endforeach
                             </div>
@@ -900,7 +1276,7 @@
                     <div id="detail-modal-pool" class="text-xs font-bold text-[#F4F7FB] mt-1">300,00 €</div>
                 </div>
                 <div class="bg-[#080B11] border border-white/10 p-3">
-                    <div class="text-[9px] text-[#64748B]">RAKE (800 BPS / 8%)</div>
+                    <div class="text-[9px] text-[#64748B]">RAKE TOTAL</div>
                     <div id="detail-modal-rake" class="text-xs font-bold text-[#F59E0B] mt-1">24,00 €</div>
                 </div>
                 <div class="bg-[#080B11] border border-white/10 p-3">

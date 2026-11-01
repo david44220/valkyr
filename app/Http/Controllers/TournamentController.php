@@ -11,11 +11,14 @@ use App\Http\Requests\StoreTournamentRequest;
 use App\Models\Tournament;
 use App\Models\TournamentRegistration;
 use App\Models\User;
+use App\Models\Wallet;
 use App\Services\EscrowLedgerService;
+use Closure;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
 
 final class TournamentController extends Controller
@@ -65,6 +68,7 @@ final class TournamentController extends Controller
         }
 
         $tournaments = $query
+            ->orderByDesc('is_featured')
             ->orderByRaw("CASE status WHEN 'OPEN' THEN 1 WHEN 'IN_PROGRESS' THEN 2 WHEN 'LOCKED' THEN 3 WHEN 'SETTLED' THEN 4 ELSE 5 END")
             ->orderByDesc('escrow_pool_cents')
             ->get();
@@ -96,20 +100,25 @@ final class TournamentController extends Controller
             'ledgerEntries.wallet.user',
         ]);
 
-        // Calculate exact server-side integer math breakdown (8% Rake + 60/30/10 Net Pool)
+        // Calculate exact server-side integer math breakdown (Rake + Organizer RevShare + 60/30/10 Net Pool)
         $grossPoolCents = (int) $tournament->escrow_pool_cents;
         $referencePoolCents = $grossPoolCents > 0
             ? $grossPoolCents
             : (int) $tournament->entry_fee_cents * (int) $tournament->max_participants;
 
         $rakeBps = (int) ($tournament->rake_bps ?: Tournament::DEFAULT_RAKE_BPS);
-        $rakeCents = $tournament->status === Tournament::STATUS_SETTLED && (int) $tournament->platform_rake_cents > 0
+        $organizerShareBps = min((int) ($tournament->organizer_share_bps ?? 0), $rakeBps);
+        $totalRakeCents = intdiv($referencePoolCents * $rakeBps, 10000);
+        $organizerRakeCents = $tournament->status === Tournament::STATUS_SETTLED && (int) $tournament->organizer_rake_cents > 0
+            ? (int) $tournament->organizer_rake_cents
+            : intdiv($referencePoolCents * $organizerShareBps, 10000);
+        $platformRakeCents = $tournament->status === Tournament::STATUS_SETTLED && (int) $tournament->platform_rake_cents > 0
             ? (int) $tournament->platform_rake_cents
-            : intdiv($referencePoolCents * $rakeBps, 10000);
+            : ($totalRakeCents - $organizerRakeCents);
 
         $netPoolCents = $tournament->status === Tournament::STATUS_SETTLED && (int) $tournament->net_prize_pool_cents > 0
             ? (int) $tournament->net_prize_pool_cents
-            : ($referencePoolCents - $rakeCents);
+            : ($referencePoolCents - $totalRakeCents);
 
         $secondPrizeCents = intdiv($netPoolCents * 3000, 10000);
         $thirdPrizeCents = $tournament->format === '1v1' && $tournament->max_participants <= 2
@@ -122,7 +131,10 @@ final class TournamentController extends Controller
             'escrow_pool_cents' => $grossPoolCents,
             'reference_pool_cents' => $referencePoolCents,
             'rake_bps' => $rakeBps,
-            'platform_rake_cents' => $rakeCents,
+            'organizer_share_bps' => $organizerShareBps,
+            'total_rake_cents' => $totalRakeCents,
+            'platform_rake_cents' => $platformRakeCents,
+            'organizer_rake_cents' => $organizerRakeCents,
             'net_prize_pool_cents' => $netPoolCents,
             'first_prize_cents' => $firstPrizeCents,
             'second_prize_cents' => $secondPrizeCents,
@@ -253,6 +265,13 @@ final class TournamentController extends Controller
         $baseSlug = Str::slug((string) $validated['title']);
         $slug = $baseSlug.'-'.strtolower(Str::random(6));
 
+        $rakeBps = isset($validated['rake_bps']) && $validated['rake_bps'] !== null
+            ? (int) $validated['rake_bps']
+            : Tournament::DEFAULT_RAKE_BPS;
+        $organizerShareBps = isset($validated['organizer_share_bps']) && $validated['organizer_share_bps'] !== null
+            ? min((int) $validated['organizer_share_bps'], $rakeBps)
+            : 200;
+
         $tournament = Tournament::create([
             'organizer_id' => $organizer->id,
             'slug' => $slug,
@@ -263,9 +282,13 @@ final class TournamentController extends Controller
             'entry_fee_cents' => (int) $validated['entry_fee_cents'],
             'escrow_pool_cents' => 0,
             'sponsored_guarantee_cents' => 0,
-            'rake_bps' => Tournament::DEFAULT_RAKE_BPS,
+            'rake_bps' => $rakeBps,
+            'organizer_share_bps' => $organizerShareBps,
             'platform_rake_cents' => 0,
+            'organizer_rake_cents' => 0,
             'net_prize_pool_cents' => 0,
+            'is_featured' => false,
+            'boost_paid_cents' => 0,
             'max_participants' => (int) $validated['max_participants'],
             'registered_count' => 0,
             'starts_at' => isset($validated['starts_at']) ? $validated['starts_at'] : now()->addHours(2),
@@ -337,7 +360,7 @@ final class TournamentController extends Controller
             return response()->json([
                 'message' => $result['idempotent_replay']
                     ? 'Tournoi déjà clôturé (réponse idempotente).'
-                    : 'Tournoi clôturé : commission 8 % prélevée et cashprize 60/30/10 distribué.',
+                    : 'Tournoi clôturé : commission prélevée et cashprize 60/30/10 distribué.',
                 'tournament' => $result['tournament'],
                 'breakdown' => $result['breakdown'],
                 'idempotent_replay' => $result['idempotent_replay'],
@@ -373,5 +396,92 @@ final class TournamentController extends Controller
         }
 
         return back()->with('status', "Tournoi « {$tournament->title} » annulé et séquestre intégralement remboursé.");
+    }
+
+    public function boost(
+        Request $request,
+        Tournament $tournament,
+        EscrowLedgerService $ledgerService
+    ): JsonResponse|RedirectResponse {
+        Gate::authorize('settle', $tournament);
+
+        /** @var User $actor */
+        $actor = $request->user();
+        $validated = $request->validate([
+            'idempotency_key' => ['required', 'string', 'min:4', 'max:140'],
+        ]);
+
+        $result = $ledgerService->boostTournament(
+            actor: $actor,
+            tournament: $tournament,
+            idempotencyKey: (string) $validated['idempotency_key'],
+        );
+
+        $message = $result['idempotent_replay']
+            ? 'Arena Boost déjà activé pour ce tournoi (réponse idempotente).'
+            : "★ Arena Boost activé pour « {$tournament->title} » (25,00 € débités vers SYS_TREASURY).";
+
+        if ($request->is('api/*') || $request->expectsJson()) {
+            return response()->json([
+                'message' => $message,
+                'tournament' => $result['tournament'],
+                'wallet' => $result['wallet'],
+                'ledger_entry' => $result['ledger_entry'],
+                'idempotent_replay' => $result['idempotent_replay'],
+            ], 200);
+        }
+
+        return back()->with('status', $message);
+    }
+
+    public function sponsor(
+        Request $request,
+        Tournament $tournament,
+        EscrowLedgerService $ledgerService
+    ): JsonResponse|RedirectResponse {
+        /** @var User $actor */
+        $actor = $request->user();
+        if (! $actor->isOrganizer() && ! $actor->isAdmin()) {
+            abort(403, 'Seuls un Organisateur ou un Administrateur peuvent injecter un abondement sponsorisé.');
+        }
+
+        $validated = $request->validate([
+            'amount_cents' => [
+                'required',
+                function (string $attribute, mixed $value, Closure $fail): void {
+                    if (is_float($value) || is_bool($value) || ! preg_match('/^-?\d+$/', (string) $value)) {
+                        $fail('Le montant de l\'abondement doit être exprimé en centimes entiers.');
+                    }
+                },
+                'integer',
+                'min:100',
+                'max:10000000',
+            ],
+            'idempotency_key' => ['required', 'string', 'min:4', 'max:140'],
+        ]);
+
+        $result = $ledgerService->sponsorTournament(
+            actor: $actor,
+            tournament: $tournament,
+            amountCents: (int) $validated['amount_cents'],
+            idempotencyKey: (string) $validated['idempotency_key'],
+        );
+
+        $formatted = Wallet::formatCents((int) $validated['amount_cents']);
+        $message = $result['idempotent_replay']
+            ? 'Abondement sponsorisé déjà crédité (réponse idempotente).'
+            : "Abondement sponsorisé de {$formatted} injecté dans le coffre de séquestre de « {$tournament->title} ».";
+
+        if ($request->is('api/*') || $request->expectsJson()) {
+            return response()->json([
+                'message' => $message,
+                'tournament' => $result['tournament'],
+                'wallet' => $result['wallet'],
+                'ledger_entry' => $result['ledger_entry'],
+                'idempotent_replay' => $result['idempotent_replay'],
+            ], 200);
+        }
+
+        return back()->with('status', $message);
     }
 }

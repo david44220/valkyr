@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\LedgerEntry;
+use App\Models\PaymentRail;
 use App\Models\Tournament;
 use App\Models\User;
 use App\Models\Wallet;
@@ -677,5 +678,321 @@ final class EscrowLedgerSecurityTest extends TestCase
         $this->actingAs($nyx)->postJson('/api/auth/logout')
             ->assertOk()
             ->assertJsonPath('redirect', '/');
+    }
+
+    public function test_v3_payment_rails_fees_prime_subscription_and_manual_admin_funding_queue(): void
+    {
+        $ledgerService = app(EscrowLedgerService::class);
+        $systemWallets = $ledgerService->ensureSystemWallets();
+        $ledgerService->ensureDefaultPaymentRails();
+
+        $admin = User::factory()->admin()->create();
+        $organizer = User::factory()->organizer()->create();
+        $player = User::factory()->player()->create();
+
+        $cardRail = PaymentRail::where('code', 'STRIPE_CARD')->firstOrFail();
+        $manualWireRail = PaymentRail::where('code', 'SEPA_MANUAL')->firstOrFail();
+        $cryptoRail = PaymentRail::where('code', 'CRYPTO_USDT')->firstOrFail();
+
+        // 1. Deposit 100.00 EUR (10000 cents) via STRIPE_CARD (1.5% + 0.25€ = 175 cents fee)
+        // Player receives 9825 net cents; SYS_TREASURY receives 175 cents PLATFORM_PAYMENT_FEE_CREDIT
+        $cardDepRes = $this->actingAs($player)->postJson('/api/wallets/deposit', [
+            'amount_cents' => 10000,
+            'payment_rail_id' => $cardRail->id,
+            'reference_code' => 'VISA-TEST-001',
+            'idempotency_key' => 'v3-card-dep-001',
+        ]);
+
+        $cardDepRes->assertCreated()
+            ->assertJsonPath('status', 'SETTLED')
+            ->assertJsonPath('fee_cents', 175)
+            ->assertJsonPath('net_amount_cents', 9825)
+            ->assertJsonPath('wallet.balance_cents', 9825);
+
+        $this->assertSame(175, $systemWallets['treasury']->fresh()->balance_cents);
+
+        // 2. Player subscribes to ★ VALKYR PRIME (19.00 EUR = 1900 cents from Wallet to SYS_TREASURY)
+        $primeRes = $this->actingAs($player)->postJson('/api/wallets/subscribe-prime', [
+            'idempotency_key' => 'v3-prime-sub-001',
+        ]);
+
+        $primeRes->assertOk()
+            ->assertJsonPath('user.is_prime', true)
+            ->assertJsonPath('wallet.balance_cents', 9825 - 1900)
+            ->assertJsonPath('idempotent_replay', false);
+
+        $this->assertSame(175 + 1900, $systemWallets['treasury']->fresh()->balance_cents);
+
+        // 3. Prime member deposits via STRIPE_CARD -> 0% fee exemption (fee_cents === 0)!
+        $primeCardRes = $this->actingAs($player->fresh())->postJson('/api/wallets/deposit', [
+            'amount_cents' => 10000,
+            'payment_rail_id' => $cardRail->id,
+            'reference_code' => 'VISA-PRIME-002',
+            'idempotency_key' => 'v3-card-dep-prime-002',
+        ]);
+
+        $primeCardRes->assertCreated()
+            ->assertJsonPath('fee_cents', 0)
+            ->assertJsonPath('net_amount_cents', 10000)
+            ->assertJsonPath('wallet.balance_cents', 7925 + 10000);
+
+        // 4. Saved Payment Method creation & Crypto withdrawal by non-Prime user (charges 1.0% + 1.00€ fee = 200 cents)
+        $otherPlayer = User::factory()->player()->create();
+        $ledgerService->deposit($otherPlayer, 20000, 'v3-other-dep-001');
+
+        $methodRes = $this->actingAs($otherPlayer)->postJson('/api/payment-methods', [
+            'payment_rail_id' => $cryptoRail->id,
+            'label' => 'Arbitrum Vault Test',
+            'account_identifier' => '0x1234567890abcdef1234567890abcdef12345678',
+            'is_default' => true,
+        ])->assertCreated();
+
+        $methodId = (int) $methodRes->json('payment_method.id');
+
+        // Player cannot use another user's saved payment method -> 403 Forbidden
+        $this->actingAs($player->fresh())->postJson('/api/wallets/withdraw', [
+            'amount_cents' => 2000,
+            'user_payment_method_id' => $methodId,
+            'idempotency_key' => 'v3-idor-method-attempt',
+        ])->assertForbidden();
+
+        // Legitimate withdrawal of 100.00 EUR (10000 cents) via CRYPTO_USDT (1.0% + 1.00€ = 200 cents fee)
+        $cryptoWdRes = $this->actingAs($otherPlayer)->postJson('/api/wallets/withdraw', [
+            'amount_cents' => 10000,
+            'user_payment_method_id' => $methodId,
+            'idempotency_key' => 'v3-crypto-wd-001',
+        ]);
+
+        $cryptoWdRes->assertOk()
+            ->assertJsonPath('fee_cents', 200)
+            ->assertJsonPath('net_amount_cents', 9800)
+            ->assertJsonPath('wallet.balance_cents', 10000);
+
+        // 5. Manual SEPA Wire Deposit (requires_admin_approval = true) -> 202 PENDING_ADMIN
+        $manualDepRes = $this->actingAs($otherPlayer)->postJson('/api/wallets/deposit', [
+            'amount_cents' => 25000,
+            'payment_rail_id' => $manualWireRail->id,
+            'reference_code' => 'WIRE-MANUAL-777',
+            'idempotency_key' => 'v3-manual-dep-001',
+        ]);
+
+        $manualDepRes->assertStatus(202)
+            ->assertJsonPath('status', 'PENDING_ADMIN')
+            ->assertJsonPath('pending_approval', true)
+            ->assertJsonPath('wallet.balance_cents', 10000); // Not credited yet!
+
+        $fundingReqId = (int) $manualDepRes->json('funding_request.id');
+
+        // Non-admin cannot approve funding request -> 403 Forbidden
+        $this->actingAs($organizer)
+            ->postJson("/api/admin/funding-requests/{$fundingReqId}/approve")
+            ->assertForbidden();
+
+        // Admin approves funding request -> wallet credited with 25000 cents!
+        $approveRes = $this->actingAs($admin)
+            ->postJson("/api/admin/funding-requests/{$fundingReqId}/approve", [
+                'admin_notes' => 'Virement bancaire vérifié sur relevé Trésorerie.',
+            ]);
+
+        $approveRes->assertOk()
+            ->assertJsonPath('funding_request.status', 'SETTLED')
+            ->assertJsonPath('wallet.balance_cents', 35000)
+            ->assertJsonPath('idempotent_replay', false);
+
+        // Idempotent replay of approveFundingRequest -> 200 OK without double credit
+        $this->actingAs($admin)
+            ->postJson("/api/admin/funding-requests/{$fundingReqId}/approve")
+            ->assertOk()
+            ->assertJsonPath('idempotent_replay', true)
+            ->assertJsonPath('wallet.balance_cents', 35000);
+
+        // 6. Manual SEPA Wire Withdrawal + Admin Rejection
+        $manualWdRes = $this->actingAs($otherPlayer)->postJson('/api/wallets/withdraw', [
+            'amount_cents' => 5000,
+            'payment_rail_id' => $manualWireRail->id,
+            'iban' => 'FR76 3000 6000 0112 3456 7890 189',
+            'idempotency_key' => 'v3-manual-wd-reject-001',
+        ]);
+
+        $manualWdRes->assertOk()
+            ->assertJsonPath('status', 'PENDING_ADMIN');
+
+        $wdReqId = (int) $manualWdRes->json('funding_request.id');
+
+        $this->actingAs($admin)
+            ->postJson("/api/admin/funding-requests/{$wdReqId}/reject", [
+                'admin_notes' => 'IBAN bénéficiaire en attente de justificatif.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('funding_request.status', 'REJECTED');
+
+        $this->assertSame(35000, $otherPlayer->wallet->fresh()->balance_cents);
+    }
+
+    public function test_v3_organizer_revshare_arena_boost_sponsor_pool_and_sovereign_admin_back_office(): void
+    {
+        $ledgerService = app(EscrowLedgerService::class);
+        $systemWallets = $ledgerService->ensureSystemWallets();
+        $ledgerService->ensureDefaultPaymentRails();
+
+        $admin = User::factory()->admin()->create();
+        $organizer = User::factory()->organizer()->create();
+        $rivalOrganizer = User::factory()->organizer()->create();
+        $p1 = User::factory()->player()->create();
+        $p2 = User::factory()->player()->create();
+        $p3 = User::factory()->player()->create();
+
+        $ledgerService->deposit($organizer, 30000, 'v3-org-dep-01');
+        $ledgerService->deposit($p1, 20000, 'v3-p1-dep-01');
+        $ledgerService->deposit($p2, 20000, 'v3-p2-dep-01');
+        $ledgerService->deposit($p3, 20000, 'v3-p3-dep-01');
+
+        // 1. Organizer creates tournament with rake_bps=800 (8%) and organizer_share_bps=200 (2%)
+        $createRes = $this->actingAs($organizer)->postJson('/api/tournaments', [
+            'title' => 'SOVEREIGN REVSHARE MAJOR',
+            'game' => 'VALORANT // PROTOCOL',
+            'format' => '5v5',
+            'entry_fee_cents' => 10000,
+            'max_participants' => 8,
+            'rake_bps' => 800,
+            'organizer_share_bps' => 200,
+        ])->assertCreated();
+
+        $tournamentId = (int) $createRes->json('tournament.id');
+
+        // 2. Rival Organizer cannot boost tournament -> 403 Forbidden
+        $this->actingAs($rivalOrganizer)->postJson("/api/tournaments/{$tournamentId}/boost", [
+            'idempotency_key' => 'v3-rival-boost-hack',
+        ])->assertForbidden();
+
+        // Owning Organizer activates ★ ARENA BOOST (2500 cents -> SYS_TREASURY)
+        $this->actingAs($organizer)->postJson("/api/tournaments/{$tournamentId}/boost", [
+            'idempotency_key' => 'v3-org-boost-001',
+        ])->assertOk()
+            ->assertJsonPath('tournament.is_featured', true)
+            ->assertJsonPath('tournament.boost_paid_cents', 2500)
+            ->assertJsonPath('wallet.balance_cents', 27500);
+
+        $this->assertSame(2500, $systemWallets['treasury']->fresh()->balance_cents);
+
+        // 3. Organizer injects 100.00 EUR (10000 cents) Sponsor Pool into tournament Escrow Vault
+        $this->actingAs($organizer)->postJson("/api/tournaments/{$tournamentId}/sponsor", [
+            'amount_cents' => 10000,
+            'idempotency_key' => 'v3-org-sponsor-001',
+        ])->assertOk()
+            ->assertJsonPath('tournament.escrow_pool_cents', 10000)
+            ->assertJsonPath('tournament.sponsored_guarantee_cents', 10000)
+            ->assertJsonPath('wallet.balance_cents', 17500);
+
+        // 4. Three players register (3 * 10000 = 30000 cents + 10000 sponsor = 40000 cents total escrow pool)
+        $this->actingAs($p1)->postJson("/api/tournaments/{$tournamentId}/register", ['idempotency_key' => 'v3-reg-p1'])->assertOk();
+        $this->actingAs($p2)->postJson("/api/tournaments/{$tournamentId}/register", ['idempotency_key' => 'v3-reg-p2'])->assertOk();
+        $this->actingAs($p3)->postJson("/api/tournaments/{$tournamentId}/register", ['idempotency_key' => 'v3-reg-p3'])->assertOk();
+
+        // 5. Settle tournament:
+        // Total Pool = 40000 cents
+        // Total Rake (8%) = 3200 cents -> Platform Net Rake (6%) = 2400 cents + Organizer RevShare (2%) = 800 cents
+        // Net Prize Pool (92%) = 36800 cents -> 1st (60%) = 22080, 2nd (30%) = 11040, 3rd (10%) = 3680
+        $settleRes = $this->actingAs($organizer)->postJson("/api/tournaments/{$tournamentId}/settle", [
+            'first_place_user_id' => $p1->id,
+            'second_place_user_id' => $p2->id,
+            'third_place_user_id' => $p3->id,
+            'idempotency_key' => 'v3-settle-revshare-001',
+        ]);
+
+        $settleRes->assertOk()
+            ->assertJsonPath('breakdown.total_pool_cents', 40000)
+            ->assertJsonPath('breakdown.platform_rake_cents', 2400)
+            ->assertJsonPath('breakdown.organizer_rake_cents', 800)
+            ->assertJsonPath('breakdown.net_prize_pool_cents', 36800)
+            ->assertJsonPath('breakdown.first_prize_cents', 22080)
+            ->assertJsonPath('breakdown.second_prize_cents', 11040)
+            ->assertJsonPath('breakdown.third_prize_cents', 3680);
+
+        // Organizer wallet received +800 cents ORGANIZER_RAKE_SHARE_CREDIT (17500 + 800 = 18300)
+        $this->assertSame(18300, $organizer->wallet->fresh()->balance_cents);
+        // Treasury wallet has 2500 (Boost) + 2400 (Net Rake) = 4900 cents
+        $this->assertSame(4900, $systemWallets['treasury']->fresh()->balance_cents);
+        // Escrow vault is back to 0
+        $this->assertSame(0, $systemWallets['escrow']->fresh()->balance_cents);
+
+        // 6. Sovereign Admin Back-Office (/admin) RBAC & Governance
+        // Guest accessing /admin -> 302 redirect to /login; Guest on /api/admin/state -> 401
+        auth()->logout();
+        $this->get('/admin')->assertRedirect('/login');
+        $this->getJson('/api/admin/state')->assertUnauthorized();
+
+        // Player & Organizer blocked from /admin and all /api/admin/* mutation endpoints (403 Forbidden)
+        $this->actingAs($p1)->get('/admin')->assertForbidden();
+        $this->actingAs($organizer)->get('/admin')->assertForbidden();
+        $this->actingAs($p1)->postJson('/api/admin/payment-rails', [])->assertForbidden();
+        $this->actingAs($organizer)->postJson("/api/admin/users/{$p1->id}/update-status", ['role' => 'ADMIN'])->assertForbidden();
+        $this->actingAs($organizer)->postJson("/api/admin/users/{$p1->id}/credit-wallet", ['amount_cents' => 50000])->assertForbidden();
+        $this->actingAs($organizer)->postJson("/api/admin/tournaments/{$tournamentId}/configure", ['rake_bps' => 100])->assertForbidden();
+
+        $this->actingAs($admin)->get('/admin')->assertOk();
+
+        $adminStateRes = $this->actingAs($admin)->getJson('/api/admin/state')->assertOk();
+        $adminStateRes->assertJsonPath('ledgerHealth.is_healthy', true)
+            ->assertJsonPath('revenueMetrics.treasury_balance_cents', 4900)
+            ->assertJsonPath('revenueMetrics.net_tournament_rake_cents', 2400)
+            ->assertJsonPath('revenueMetrics.organizer_revshare_paid_cents', 800)
+            ->assertJsonPath('revenueMetrics.arena_boosts_revenue_cents', 2500);
+
+        // 7. Sponsored Tournament Cancellation: players get 100% of their buy-in refunded without dilution and Sponsored Pool is released cleanly
+        $cancelTourneyRes = $this->actingAs($organizer)->postJson('/api/tournaments', [
+            'title' => 'SPONSORED CANCEL SAFETY CUP',
+            'game' => 'COUNTER-STRIKE 2',
+            'format' => '5v5',
+            'entry_fee_cents' => 5000,
+            'max_participants' => 4,
+            'rake_bps' => 800,
+            'organizer_share_bps' => 200,
+        ])->assertCreated();
+        $cancelTourneyId = (int) $cancelTourneyRes->json('tournament.id');
+
+        $this->actingAs($organizer)->postJson("/api/tournaments/{$cancelTourneyId}/sponsor", [
+            'amount_cents' => 5000,
+            'idempotency_key' => 'v3-cancel-sponsor-001',
+        ])->assertOk();
+
+        $p1BeforeCancel = $p1->wallet->fresh()->balance_cents;
+        $this->actingAs($p1)->postJson("/api/tournaments/{$cancelTourneyId}/register", [
+            'idempotency_key' => 'v3-cancel-reg-p1',
+        ])->assertOk();
+
+        $this->actingAs($organizer)->postJson("/api/tournaments/{$cancelTourneyId}/cancel", [
+            'idempotency_key' => 'v3-cancel-exec-001',
+            'reason' => 'Test non-dilution remboursement joueur + libération sponsor',
+        ])->assertOk()
+            ->assertJsonPath('tournament.status', Tournament::STATUS_CANCELLED)
+            ->assertJsonPath('tournament.escrow_pool_cents', 0)
+            ->assertJsonPath('refunded_count', 1)
+            ->assertJsonPath('total_refunded_cents', 5000);
+
+        $this->assertSame($p1BeforeCancel, $p1->wallet->fresh()->balance_cents);
+        $this->assertSame(0, $p1->wallet->fresh()->locked_escrow_cents);
+
+        // Admin freezes Player 3's wallet -> Player 3 cannot withdraw or join tournaments (422)
+        $this->actingAs($admin)->postJson("/api/admin/users/{$p3->id}/update-status", [
+            'is_frozen' => true,
+        ])->assertOk()
+            ->assertJsonPath('user.is_frozen', true);
+
+        $this->actingAs($p3->fresh())->postJson('/api/wallets/withdraw', [
+            'amount_cents' => 1000,
+            'idempotency_key' => 'v3-frozen-wd-attempt',
+        ])->assertStatus(422);
+
+        // Global conservation check across all wallets
+        foreach (Wallet::all() as $wallet) {
+            $this->assertTrue($ledgerService->verifyWalletLedgerInvariant($wallet));
+        }
+
+        $totalDeposits = (int) LedgerEntry::where('entry_type', LedgerEntry::TYPE_DEPOSIT)->sum('credit_cents');
+        $totalWithdrawals = (int) LedgerEntry::where('entry_type', LedgerEntry::TYPE_WITHDRAWAL)->sum('debit_cents');
+        $sumAllWallets = (int) Wallet::sum('balance_cents');
+
+        $this->assertSame($totalDeposits - $totalWithdrawals, $sumAllWallets);
     }
 }

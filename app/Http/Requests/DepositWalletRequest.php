@@ -31,6 +31,8 @@ final class DepositWalletRequest extends FormRequest
                 'min:100',
                 'max:10000000',
             ],
+            'payment_rail_id' => ['nullable', 'integer', 'exists:payment_rails,id'],
+            'reference_code' => ['nullable', 'string', 'max:120'],
             'idempotency_key' => ['required', 'string', 'min:4', 'max:120'],
         ];
     }

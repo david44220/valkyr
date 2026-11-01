@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
+use App\Models\PaymentRail;
 use App\Models\Tournament;
 use App\Models\User;
+use App\Models\UserPaymentMethod;
 use App\Services\EscrowLedgerService;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -13,12 +15,14 @@ use Illuminate\Support\Facades\Hash;
 final class DatabaseSeeder extends Seeder
 {
     /**
-     * Seed the application's database with deterministic accounts, wallets, tournaments, and double-entry ledger entries.
+     * Seed the application's database with deterministic accounts, wallets, payment rails,
+     * saved payment methods, tournaments, and all 5 revenue streams on the double-entry ledger.
      */
     public function run(): void
     {
         $ledgerService = app(EscrowLedgerService::class);
         $ledgerService->ensureSystemWallets();
+        $ledgerService->ensureDefaultPaymentRails();
 
         $defaultPassword = Hash::make('Password123!');
 
@@ -32,6 +36,10 @@ final class DatabaseSeeder extends Seeder
                 'role' => User::ROLE_ADMIN,
                 'elo_rating' => 2450,
                 'preferred_class' => 'VALKYRIE',
+                'is_prime' => true,
+                'prime_expires_at' => now()->addYear(),
+                'is_frozen' => false,
+                'kyc_status' => User::KYC_INSTITUTIONAL,
             ]
         );
 
@@ -44,6 +52,9 @@ final class DatabaseSeeder extends Seeder
                 'role' => User::ROLE_ORGANIZER,
                 'elo_rating' => 2180,
                 'preferred_class' => 'CHRONO',
+                'is_prime' => false,
+                'is_frozen' => false,
+                'kyc_status' => User::KYC_VERIFIED_PRO,
             ]
         );
 
@@ -56,6 +67,9 @@ final class DatabaseSeeder extends Seeder
                 'role' => User::ROLE_ORGANIZER,
                 'elo_rating' => 1920,
                 'preferred_class' => 'VANGUARD',
+                'is_prime' => false,
+                'is_frozen' => false,
+                'kyc_status' => User::KYC_VERIFIED_PRO,
             ]
         );
 
@@ -68,6 +82,9 @@ final class DatabaseSeeder extends Seeder
                 'role' => User::ROLE_PLAYER,
                 'elo_rating' => 2365,
                 'preferred_class' => 'VALKYRIE',
+                'is_prime' => false,
+                'is_frozen' => false,
+                'kyc_status' => User::KYC_VERIFIED_PRO,
             ]
         );
 
@@ -80,6 +97,9 @@ final class DatabaseSeeder extends Seeder
                 'role' => User::ROLE_PLAYER,
                 'elo_rating' => 2300,
                 'preferred_class' => 'SPECTRE',
+                'is_prime' => false,
+                'is_frozen' => false,
+                'kyc_status' => User::KYC_VERIFIED_PRO,
             ]
         );
 
@@ -92,6 +112,9 @@ final class DatabaseSeeder extends Seeder
                 'role' => User::ROLE_PLAYER,
                 'elo_rating' => 2235,
                 'preferred_class' => 'CHRONO',
+                'is_prime' => false,
+                'is_frozen' => false,
+                'kyc_status' => User::KYC_STANDARD,
             ]
         );
 
@@ -104,21 +127,86 @@ final class DatabaseSeeder extends Seeder
                 'role' => User::ROLE_PLAYER,
                 'elo_rating' => 2195,
                 'preferred_class' => 'VANGUARD',
+                'is_prime' => false,
+                'is_frozen' => false,
+                'kyc_status' => User::KYC_STANDARD,
             ]
         );
 
-        // 2. Initial Wallet Deposits via Double-Entry Ledger Service
+        // 2. Saved Payment Methods for Demo Users
+        $sepaInstantRail = PaymentRail::where('code', 'SEPA_INSTANT')->first();
+        $sepaManualRail = PaymentRail::where('code', 'SEPA_MANUAL')->first();
+        $cryptoRail = PaymentRail::where('code', 'CRYPTO_USDT')->first();
+        $cardRail = PaymentRail::where('code', 'STRIPE_CARD')->first();
+
+        if ($sepaInstantRail !== null) {
+            UserPaymentMethod::updateOrCreate(
+                ['user_id' => $nyx->id, 'label' => 'Compte Principal BNP Paribas SEPA'],
+                [
+                    'payment_rail_id' => $sepaInstantRail->id,
+                    'account_identifier' => 'FR76 3000 4028 3700 0108 8291 044',
+                    'is_default' => true,
+                    'is_verified' => true,
+                ]
+            );
+            UserPaymentMethod::updateOrCreate(
+                ['user_id' => $organizer->id, 'label' => 'Trésorerie Pro VKR_ARBITER SEPA'],
+                [
+                    'payment_rail_id' => $sepaInstantRail->id,
+                    'account_identifier' => 'FR76 1027 8060 3900 0209 4410 382',
+                    'is_default' => true,
+                    'is_verified' => true,
+                ]
+            );
+            UserPaymentMethod::updateOrCreate(
+                ['user_id' => $aether->id, 'label' => 'Compte Courant Société Générale'],
+                [
+                    'payment_rail_id' => $sepaInstantRail->id,
+                    'account_identifier' => 'FR76 3000 3035 4000 0502 1847 219',
+                    'is_default' => true,
+                    'is_verified' => true,
+                ]
+            );
+        }
+
+        if ($cryptoRail !== null) {
+            UserPaymentMethod::updateOrCreate(
+                ['user_id' => $nyx->id, 'label' => 'Ledger Nano X // Arbitrum Vault'],
+                [
+                    'payment_rail_id' => $cryptoRail->id,
+                    'account_identifier' => '0x71C95911E9a5D330f4D621842EC243EE1343292e',
+                    'is_default' => false,
+                    'is_verified' => true,
+                ]
+            );
+            UserPaymentMethod::updateOrCreate(
+                ['user_id' => $kestrel->id, 'label' => 'Cold Wallet Polygon EURC'],
+                [
+                    'payment_rail_id' => $cryptoRail->id,
+                    'account_identifier' => '0x4B20993Bc481177ec7E8f571ceCaE8A9e22C02db',
+                    'is_default' => true,
+                    'is_verified' => true,
+                ]
+            );
+        }
+
+        // 3. Initial Wallet Deposits via Double-Entry Ledger Service
         $ledgerService->deposit($admin, 500000, 'seed:deposit:admin:01', 'Dotation initiale Trésorerie Commandement');
         $ledgerService->deposit($organizer, 250000, 'seed:deposit:organizer:01', 'Dotation initiale Organisateur Certifié');
         $ledgerService->deposit($rivalOrganizer, 100000, 'seed:deposit:rival:01', 'Dotation initiale Organisateur Secondaire');
 
         // Players receive initial deposits so that after tournament buy-ins and settlements their balances are abundant
-        $ledgerService->deposit($nyx, 180000, 'seed:deposit:nyx:01', 'Dépôt initial vérifié SEPA Instant // VKR_NYX');
-        $ledgerService->deposit($kestrel, 160000, 'seed:deposit:kestrel:01', 'Dépôt initial vérifié SEPA Instant // KESTREL_ZERO');
-        $ledgerService->deposit($aether, 145000, 'seed:deposit:aether:01', 'Dépôt initial vérifié SEPA Instant // AETHER_9');
-        $ledgerService->deposit($sovereign, 125000, 'seed:deposit:sovereign:01', 'Dépôt initial vérifié SEPA Instant // SOVEREIGN_X');
+        $ledgerService->deposit($nyx, 180000, 'seed:deposit:nyx:01', 'Dépôt initial vérifié SEPA Instant // VKR_NYX', $sepaInstantRail?->id, 'SEPA-NYX-001');
+        $ledgerService->deposit($kestrel, 150000, 'seed:deposit:kestrel:01', 'Dépôt initial vérifié SEPA Instant // KESTREL_ZERO', $sepaInstantRail?->id, 'SEPA-KES-001');
+        // Card deposit by KESTREL_ZERO generating Payment Rail Fee revenue (1.5% + 0.35€ = 1.85€ -> 185 cents to SYS_TREASURY)
+        $ledgerService->deposit($kestrel, 10000, 'seed:deposit:kestrel:card02', 'Rechargement Carte 3D-Secure // KESTREL_ZERO', $cardRail?->id, 'VISA-3DS-9841');
+        $ledgerService->deposit($aether, 145000, 'seed:deposit:aether:01', 'Dépôt initial vérifié SEPA Instant // AETHER_9', $sepaInstantRail?->id, 'SEPA-AET-001');
+        $ledgerService->deposit($sovereign, 125000, 'seed:deposit:sovereign:01', 'Dépôt initial vérifié SEPA Instant // SOVEREIGN_X', $sepaInstantRail?->id, 'SEPA-SOV-001');
 
-        // 3. Tournament 1 — OPEN (Owned by VKR_ARBITER, 3 players registered, ready for join OR immediate settlement)
+        // 4. Revenue Stream #3: VKR_NYX subscribes to ★ VALKYR PRIME (19,00 € from Wallet to SYS_TREASURY)
+        $ledgerService->subscribePrime($nyx, 'seed:prime:nyx:01');
+
+        // 5. Tournament 1 — OPEN & FEATURED (Owned by VKR_ARBITER, 3 players registered + Sponsor Pool + Arena Boost)
         $t1 = Tournament::updateOrCreate(
             ['slug' => 'valkyr-sovereign-series-s04'],
             [
@@ -131,8 +219,12 @@ final class DatabaseSeeder extends Seeder
                 'escrow_pool_cents' => 0,
                 'sponsored_guarantee_cents' => 50000,
                 'rake_bps' => 800,
+                'organizer_share_bps' => 200,
                 'platform_rake_cents' => 0,
+                'organizer_rake_cents' => 0,
                 'net_prize_pool_cents' => 0,
+                'is_featured' => false,
+                'boost_paid_cents' => 0,
                 'max_participants' => 16,
                 'registered_count' => 0,
                 'starts_at' => now()->addHours(4),
@@ -142,7 +234,13 @@ final class DatabaseSeeder extends Seeder
         $ledgerService->registerForTournament($kestrel, $t1, 'seed:reg:t1:kestrel', 'SPECTRE');
         $ledgerService->registerForTournament($aether, $t1, 'seed:reg:t1:aether', 'CHRONO');
 
-        // 4. Tournament 2 — OPEN (CS2 Tactical Invitational, open to NYX & AETHER)
+        // Revenue Stream #4: VKR_ARBITER boosts Tournament 1 (25,00 € from Organizer Wallet to SYS_TREASURY)
+        $ledgerService->boostTournament($organizer, $t1, 'seed:boost:t1:arbiter');
+
+        // Sponsor Pool Injection: VKR_COMMANDER injects 200,00 € (20000 cents) from Wallet into T1 Escrow Vault
+        $ledgerService->sponsorTournament($admin, $t1, 20000, 'seed:sponsor:t1:admin');
+
+        // 6. Tournament 2 — OPEN (CS2 Tactical Invitational, open to NYX & AETHER)
         $t2 = Tournament::updateOrCreate(
             ['slug' => 'aegis-tactical-invitational-eu'],
             [
@@ -155,7 +253,9 @@ final class DatabaseSeeder extends Seeder
                 'escrow_pool_cents' => 0,
                 'sponsored_guarantee_cents' => 25000,
                 'rake_bps' => 800,
+                'organizer_share_bps' => 200,
                 'platform_rake_cents' => 0,
+                'organizer_rake_cents' => 0,
                 'net_prize_pool_cents' => 0,
                 'max_participants' => 8,
                 'registered_count' => 0,
@@ -165,7 +265,7 @@ final class DatabaseSeeder extends Seeder
         $ledgerService->registerForTournament($kestrel, $t2, 'seed:reg:t2:kestrel', 'SPECTRE');
         $ledgerService->registerForTournament($sovereign, $t2, 'seed:reg:t2:sovereign', 'VANGUARD');
 
-        // 5. Tournament 3 — OPEN (1v1 High-Velocity Duel)
+        // 7. Tournament 3 — OPEN (1v1 High-Velocity Duel)
         $t3 = Tournament::updateOrCreate(
             ['slug' => 'duel-souverain-1v1-titanium-cup'],
             [
@@ -178,7 +278,9 @@ final class DatabaseSeeder extends Seeder
                 'escrow_pool_cents' => 0,
                 'sponsored_guarantee_cents' => 10000,
                 'rake_bps' => 800,
+                'organizer_share_bps' => 200,
                 'platform_rake_cents' => 0,
+                'organizer_rake_cents' => 0,
                 'net_prize_pool_cents' => 0,
                 'max_participants' => 8,
                 'registered_count' => 0,
@@ -188,7 +290,7 @@ final class DatabaseSeeder extends Seeder
         $ledgerService->registerForTournament($aether, $t3, 'seed:reg:t3:aether', 'CHRONO');
         $ledgerService->registerForTournament($sovereign, $t3, 'seed:reg:t3:sovereign', 'VANGUARD');
 
-        // 6. Tournament 4 — OPEN (Owned by RIVAL_HOST for Cross-Organizer Anti-IDOR verification)
+        // 8. Tournament 4 — OPEN (Owned by RIVAL_HOST for Cross-Organizer Anti-IDOR verification)
         $t4 = Tournament::updateOrCreate(
             ['slug' => 'nexus-rival-circuit-div-1'],
             [
@@ -201,7 +303,9 @@ final class DatabaseSeeder extends Seeder
                 'escrow_pool_cents' => 0,
                 'sponsored_guarantee_cents' => 20000,
                 'rake_bps' => 800,
+                'organizer_share_bps' => 200,
                 'platform_rake_cents' => 0,
+                'organizer_rake_cents' => 0,
                 'net_prize_pool_cents' => 0,
                 'max_participants' => 16,
                 'registered_count' => 0,
@@ -212,7 +316,7 @@ final class DatabaseSeeder extends Seeder
         $ledgerService->registerForTournament($aether, $t4, 'seed:reg:t4:aether', 'CHRONO');
         $ledgerService->registerForTournament($sovereign, $t4, 'seed:reg:t4:sovereign', 'VANGUARD');
 
-        // 7. Tournament 5 — IN_PROGRESS High-Stakes Major (1 000,00 € locked in escrow)
+        // 9. Tournament 5 — IN_PROGRESS High-Stakes Major (1 000,00 € locked in escrow)
         $t5 = Tournament::updateOrCreate(
             ['slug' => 'orion-grand-slam-protocole-elite'],
             [
@@ -225,7 +329,9 @@ final class DatabaseSeeder extends Seeder
                 'escrow_pool_cents' => 0,
                 'sponsored_guarantee_cents' => 100000,
                 'rake_bps' => 800,
+                'organizer_share_bps' => 200,
                 'platform_rake_cents' => 0,
+                'organizer_rake_cents' => 0,
                 'net_prize_pool_cents' => 0,
                 'max_participants' => 16,
                 'registered_count' => 0,
@@ -239,7 +345,7 @@ final class DatabaseSeeder extends Seeder
         $t5->status = Tournament::STATUS_IN_PROGRESS;
         $t5->save();
 
-        // 8. Tournament 6 — SETTLED Archive (400,00 € Pool -> 32,00 € Rake (8%) + 368,00 € Net Distributed 60/30/10)
+        // 10. Tournament 6 — SETTLED Archive (400,00 € Pool -> 24,00 € Platform Rake (6%) + 8,00 € Organizer RevShare (2%) + 368,00 € Net Distributed 60/30/10)
         $t6 = Tournament::updateOrCreate(
             ['slug' => 'valkyr-genesis-major-finale'],
             [
@@ -252,7 +358,9 @@ final class DatabaseSeeder extends Seeder
                 'escrow_pool_cents' => 0,
                 'sponsored_guarantee_cents' => 0,
                 'rake_bps' => 800,
+                'organizer_share_bps' => 200,
                 'platform_rake_cents' => 0,
+                'organizer_rake_cents' => 0,
                 'net_prize_pool_cents' => 0,
                 'max_participants' => 16,
                 'registered_count' => 0,
@@ -272,5 +380,26 @@ final class DatabaseSeeder extends Seeder
             thirdPlaceUserId: $aether->id,
             idempotencyKey: 'seed:settle:t6:official'
         );
+
+        // 11. Pending Manual Funding Requests (SEPA_MANUAL_WIRE) for 1-click Admin Approval in /admin
+        if ($sepaManualRail !== null) {
+            $ledgerService->deposit(
+                user: $kestrel,
+                amountCents: 50000, // 500,00 €
+                idempotencyKey: 'seed:manual:deposit:kestrel:01',
+                description: 'Virement SEPA Manuel Institutionnel // KESTREL_ZERO',
+                paymentRailId: $sepaManualRail->id,
+                referenceCode: 'VKR-SEPA-WIRE-8842'
+            );
+
+            $ledgerService->withdraw(
+                user: $aether,
+                amountCents: 15000, // 150,00 €
+                idempotencyKey: 'seed:manual:withdraw:aether:01',
+                iban: 'FR76 3000 3035 4000 0502 1847 219',
+                description: 'Retrait SEPA Trésorerie Manuel // AETHER_9',
+                paymentRailId: $sepaManualRail->id
+            );
+        }
     }
 }

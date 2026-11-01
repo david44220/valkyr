@@ -1,158 +1,222 @@
-# SPEC.md — VALKYR // ARENA (v2 — Architecture Multi-Pages & Espace Membre Complet)
-**Plateforme Compétitive E-Sport de Ligues Privées, Tournois & Défis 1v1/5v5 avec Séquestre Atomique (Escrow), Retrait SEPA & Grand Livre en Partie Double**
+# SPEC.md — VALKYR // ARENA (v3 — Moteur de Revenus Multi-Flux, Méthodes de Dépôt/Retrait Configurables & Back-Office Admin Souverain)
+**Plateforme Compétitive E-Sport de Ligues Privées, Tournois & Défis 1v1/5v5 avec Architecture 100 % Wallet, Rails de Paiement Manuels/Instantanés Configurables, 5 Flux de Revenus & Grand Livre en Partie Double**
 
 ---
 
-## 1. Analyse de l'Espace de Travail & Inventaire SSOT Immuable (4K / Code Existant)
+## 1. Analyse de l'Espace de Travail & Inventaire SSOT Immuable ("Do No Harm")
 
-### 1.1 Diagnostic & Conservation du Socle v1 ("Do No Harm")
+### 1.1 Socle Certifié à Préserver Intégralement
 - **Répertoire racine :** `c:\Users\David\Desktop\Antigravity\bench6agents`
-- **Socle Technique Actif :** **PHP 8.5 + Laravel 13 (`v13.39.0`) + SQLite (`database/database.sqlite`) + Tailwind CSS v4 + Vite**.
-- **Inventaire SSOT Immuable (Verrouillage Strict — Interdiction de supprimer ou dégrader) :**
-  1. [`DESIGN_SYSTEM.md`](file:///c:/Users/David/Desktop/Antigravity/bench6agents/DESIGN_SYSTEM.md) : Palette OKLCH (`#030407` Obsidienne Abyssal, `#D8E5F8` Titane Glacé, `#E5C158` Or Souverain, `#10B981` Émeraude Télémétrie), Typographie à 3 niveaux (`Syne` + `Instrument Serif` *Vrai Italique* + `Plus Jakarta Sans` + `JetBrains Mono` `tabular-nums`), grilles `1px` (`rgba(255,255,255,0.08)`).
-  2. **Les 6 Visuels 4K/8K Sur-Mesure existants dans `public/assets/` (SSOT Verrouillé) :**
-     - `public/assets/hero-valkyr-arena.png` (1376x768 — Hero 8K rim-light studio avec vide abyssal à gauche)
-     - `public/assets/live-combat-hud.png` (1376x768 — Toile de fond du HUD Tactique 60 FPS)
-     - `public/assets/class-vanguard.png` (1200x896 — Archétype VANGUARD // AEGIS-01)
-     - `public/assets/class-spectre.png` (1200x896 — Archétype SPECTRE // KESTREL-V)
-     - `public/assets/class-chrono.png` (1200x896 — Archétype CHRONO // ORION-IX)
-     - `public/assets/class-valkyrie.png` (1200x896 — Archétype VALKYRIE // SOVEREIGN-PRIME)
-  3. **Moteur Financier [`EscrowLedgerService.php`](file:///c:/Users/David/Desktop/Antigravity/bench6agents/app/Services/EscrowLedgerService.php) & Triggers SQLite d'Immuabilité :**
-     - Conservés à 100 % et enrichis de l'opération atomique de **Retrait Bancaire SEPA (`withdraw`)**.
+- **Stack Active :** **PHP 8.5 + Laravel 13 (`v13.39.0`) + SQLite (`database/database.sqlite`) + Tailwind CSS v4 + Vite**.
+- **Inventaire SSOT Immuable :**
+  1. [`DESIGN_SYSTEM.md`](file:///c:/Users/David/Desktop/Antigravity/bench6agents/DESIGN_SYSTEM.md) : Palette OKLCH (`#030407` Obsidienne Abyssal, `#D8E5F8` Titane Glacé, `#E5C158` Or Souverain, `#10B981` Émeraude Télémétrie), Typographie à 3 niveaux (`Syne` + `Instrument Serif` *Vrai Italique* + `Plus Jakarta Sans` + `JetBrains Mono` `tabular-nums`), grilles `1px` (`rgba(255,255,255,0.08)`), espaces insécables `\u00A0` et `whitespace-nowrap tabular-nums` sur 100 % des cellules de tableaux.
+  2. **Les 6 Visuels 4K/8K Sur-Mesure dans `public/assets/` :**
+     - `public/assets/hero-valkyr-arena.png`
+     - `public/assets/live-combat-hud.png`
+     - `public/assets/class-vanguard.png`, `public/assets/class-spectre.png`, `public/assets/class-chrono.png`, `public/assets/class-valkyrie.png`
+  3. **Les 4 Pages Existantes (v2) :**
+     - Page 1 : `GET /` (`resources/views/welcome.blade.php`) — Vitrine publique 8K.
+     - Page 2 : `GET /login` & `GET /register` (`resources/views/auth/login.blade.php`) — Auth Split-Screen 50/50.
+     - Page 3 : `GET /dashboard` (`resources/views/dashboard/index.blade.php`) — Cockpit Opérateur protégé `auth`.
+     - Page 4 : `GET /tournaments/{tournament}` (`resources/views/tournaments/show.blade.php`) — Page dédiée d'une Arène.
 
 ---
 
-## 2. Architecture Multi-Pages & Fonctionnelle Exigée (4 Vraies Pages Distinctes)
+## 2. Architecture v3 : Tout Passe par le Wallet, Moyens de Dépôt/Retrait Configurables en Admin & 5 Flux de Revenus
 
-### 2.1 Diagnostic du Problème Résolu par la v2
-Dans la v1, toute l'application était empilée sur une seule page monolithique (`GET /`). La v2 découpe l'application en **4 vraies pages distinctes** avec un routage Laravel authentique (`guest` / `auth` middlewares), une navigation multi-vues par onglets réels dans le Cockpit (zéro `scrollIntoView` !), des pages dédiées par tournoi (`/tournaments/{slug}`) et le retrait bancaire SEPA (`POST /api/wallets/withdraw`).
-
----
-
-### 2.2 Page 1 — Vitrine Publique & Découverte (`GET /` — `resources/views/welcome.blade.php`, route `home`)
-- **Contenu exclusif de `GET /` :**
-  1. **Header `100% bg-transparent` à `scrollY === 0` avec état dynamique `@guest` vs `@auth` :**
-     - Marque `✦ VALKYR` sur une seule ligne + 4 liens non numérotés (`Arènes`, `Live Replay`, `Arsenal`, `Classement`) + switch bilingue `FR / EN`.
-     - **Si non connecté (`@guest`) :** Affiche le lien `Connexion` (pointant vers `GET /login`) et le bouton CTA à angles vifs `0px` `Ouvrir un Compte ↗` (pointant vers `GET /register`).
-     - **Si connecté (`@auth`) :** Remplace `"Connexion"` par le badge opérateur (`VKR_NYX [PLAYER]` + solde en `tabular-nums`), le bouton primaire `Mon Cockpit ↗` (pointant vers `GET /dashboard`) et un bouton explicite `Déconnexion` (`POST /logout`).
-  2. **Hero 8K Pur** : Limité aux 4 éléments stricts (Kicker, `<h1>` sur exactement 2 lignes avec Ligne 1 en Romain droit `Syne` et Ligne 2 en *Vrai Italique* `Instrument Serif` `#E5C158`, sous-titre sur 2 lignes max, et 2 boutons CTA à angles vifs `0px` avec flèches). Image `<img src="/assets/hero-valkyr-arena.png" fetchpriority="high" decoding="sync">` avec `filter: none`, `transform: none` et zéro calque d'assombrissement.
-  3. **Ruban de Télémétrie Globale** (`#telemetry-ribbon`).
-  4. **Module 1 : Live Match Replay & HUD Tactique 60 FPS** (`#live-replay-section`) + Modale Replay 4K plein écran (`#replay-fullscreen-modal`).
-  5. **Module 2 : Scrollytelling Pinned Sticky en 3 Chapitres** (`#scrollytelling-track`).
-  6. **Module 3 : Sélecteur Interactif d'Arsenal (4 Classes)** (`#arsenal-section`).
-  7. **Module 4 : Catalogue Filtrable des Tournois & Ligues Privées** (`#arenas-catalog` — où chaque carte permet soit d'ouvrir la page dédiée de l'arène `GET /tournaments/{slug}`, soit de s'inscrire via Buy-in) + **Classement Général ELO** (`#leaderboard-section`).
-- **INTERDICTION FORMELLE sur `GET /` :** `#auth-split-module` et `#operator-cockpit` sont **strictement supprimés** de la page d'accueil `GET /` !
+### 2.1 Loi Fondamentale : Architecture 100 % Centrée sur le Portefeuille (`Wallet`)
+Toutes les opérations financières des joueurs et organisateurs transitent **exclusivement par leur `Wallet`** (`wallets` + `ledger_entries` en centimes entiers `BIGINT`) :
+1. L'utilisateur **crédite son Wallet** (ou retire depuis son Wallet) via des **Méthodes de Dépôt / Retrait définies, configurées et réglées par l'Admin** (`payment_rails` & `wallet_funding_requests`).
+2. Une fois son Wallet crédité, l'utilisateur utilise le solde disponible (`balance_cents`) de son Wallet pour :
+   - Payer ses **Buy-ins de tournois** (verrouillés en séquestre dans `SYS_ESCROW_VAULT`).
+   - Souscrire au **Pass Membre `★ VALKYR PRIME`** (`1 900` centimes = `19,00 €`).
+   - Payer un **Boost de Visibilité d'Arène (`Featured Arena Boost`)** (`2 500` centimes = `25,00 €` pour les Organisateurs).
+   - Injecter une **Dotation Garantie Sponsorisée (`Sponsored Pool Injection`)** dans une arène.
 
 ---
 
-### 2.3 Page 2 — Authentification Split-Screen 50/50 Dédiée (`GET /login` & `GET /register` — `resources/views/auth/login.blade.php`)
-- **Accès & Protection :**
-  - Routes `GET /login` (route nommée `login`) et `GET /register` (route nommée `register`) protégées par le middleware `guest` (tout utilisateur déjà authentifié est redirigé automatiquement vers `GET /dashboard`).
-- **Mise en page 50/50 Asymmetric Split-Screen plein écran (`min-h-dvh`) :**
-  - **Moitié Gauche (50%) :** Artwork 4K/8K pur sans flou (`/assets/hero-valkyr-arena.png` ou `/assets/class-valkyrie.png` avec `filter: none`, `transform: none`), déclaration éditoriale souveraine, télémétrie du Grand Livre en direct, et **Simulateur de Rôles Démo en 1 Clic** (`ADMIN` `VKR_COMMANDER`, `ORGANIZER` `VKR_ARBITER`, `ORGANIZER` `RIVAL_HOST`, `PLAYER` `VKR_NYX`, `PLAYER` `KESTREL_ZERO`, `PLAYER` `AETHER_9`, `PLAYER` `SOVEREIGN_X`).
-  - **Moitié Droite (50%) :**
-    * Lien de navigation `← Retour à l'Arène (/)` en haut.
-    * Onglets soulignés `Connexion (Sign in)` ⇄ `Créer un compte (Register)` (l'onglet initial actif dépend de l'URL `/login` ou `/register`, avec bascule instantanée sans rechargement).
-    * Formulaire d'inscription incluant le sélecteur de rôle initial (`account_type` : `PLAYER` ou `ORGANIZER` pour la démo, tout en bloquant strictement `ADMIN` côté serveur contre le Mass-Assignment) et la classe d'arsenal préférée.
-    * Bouton `AFFICHER / MASQUER` (`SHOW / HIDE`) fonctionnel sur les champs mot de passe.
-- **Comportement à la connexion / inscription :**
-  - Dès que la connexion (classique `POST /api/auth/login` ou `/login`, ou Démo 1-clic `POST /api/auth/demo-login`) ou l'inscription (`POST /api/auth/register` ou `/register`) réussit, **le navigateur est redirigé automatiquement vers `GET /dashboard`**.
+### 2.2 Nouvelles Tables & Colonnes SQL (Migrations v3 Réversibles)
+
+#### A. Enrichissement de la table `users`
+- `is_prime` (`BOOLEAN NOT NULL DEFAULT 0`) : Statut d'abonné `★ VALKYR PRIME` (exonère à 100 % des frais de dépôt et de retrait).
+- `prime_expires_at` (`TIMESTAMP NULL`) : Date d'expiration de l'abonnement Prime.
+- `is_frozen` (`BOOLEAN NOT NULL DEFAULT 0`) : Gel administratif du portefeuille (bloque tout retrait, buy-in ou transfert si `true`).
+- `kyc_status` (`VARCHAR(24) NOT NULL DEFAULT 'VERIFIED'`) : `'PENDING'`, `'VERIFIED'`, `'RESTRICTED'`.
+
+#### B. Enrichissement de la table `tournaments`
+- `organizer_share_bps` (`INTEGER NOT NULL DEFAULT 200`) : Part du Rake reversée au Wallet de l'`ORGANIZER` propriétaire lors de la clôture (ex: sur un Rake total de `800 bps` [8 %], `600 bps` [6 %] vont à `SYS_TREASURY` et `200 bps` [2 %] vont au Wallet de l'`ORGANIZER` ! Si l'organisateur est un `ADMIN`, les `800 bps` vont intégralement à `SYS_TREASURY` ou selon `organizer_share_bps`).
+- `organizer_rake_cents` (`BIGINT NOT NULL DEFAULT 0`) : Montant exact en centimes reversé à l'organisateur lors du `settle`.
+- `is_featured` (`BOOLEAN NOT NULL DEFAULT 0`) : Indique si l'arène est mise en avant (`★ FEATURED // SPONSORED`) en tête du catalogue.
+- `boost_paid_cents` (`BIGINT NOT NULL DEFAULT 0`) : Montant payé par l'organisateur pour le boost de visibilité.
+
+#### C. Nouvelle Table `payment_rails` (Méthodes de Dépôt & Retrait Définies et Réglées par l'Admin)
+| Colonne | Type SQL | Description |
+| :--- | :--- | :--- |
+| `id` | `BIGINT UNSIGNED` | Primary Key |
+| `code` | `VARCHAR(50) UNIQUE` | Ex: `SEPA_MANUAL`, `SEPA_INSTANT`, `CRYPTO_USDT_TRC20`, `STRIPE_CARD`, `APPLE_PAY`, `VOUCHER_CODE` |
+| `name` | `VARCHAR(120)` | Nom affiché (ex: `"Virement Bancaire SEPA (Validation Admin)"`, `"Crypto USDT / USDC (ERC-20 / TRC-20)"`, `"Carte Bancaire Instantanée"`, `"SEPA Instantané Express"`) |
+| `provider` | `VARCHAR(80)` | Ex: `"Banque Souveraine SEPA"`, `"Tether / Circle On-Chain"`, `"Stripe Treasury"`, `"Trésorerie Manuelle VALKYR"` |
+| `method_type` | `VARCHAR(30)` | `'BANK_TRANSFER'`, `'CRYPTO'`, `'CARD'`, `'MANUAL_VOUCHER'` |
+| `supports_deposit` | `BOOLEAN DEFAULT 1` | Utilisable pour créditer le Wallet |
+| `supports_withdrawal` | `BOOLEAN DEFAULT 1` | Utilisable pour retirer depuis le Wallet |
+| `requires_admin_approval` | `BOOLEAN DEFAULT 0` | Si `true` (`1`), crée une demande `PENDING` dans `wallet_funding_requests` que l'Admin règle/valide manuellement dans `/admin`. Si `false` (`0`), règle immédiatement la transaction sur le Wallet. |
+| `is_active` | `BOOLEAN DEFAULT 1` | Activé ou coupé par l'Admin en 1 clic |
+| `deposit_fee_bps` | `INTEGER DEFAULT 0` | Frais variables sur dépôt en points de base (ex: `150` = 1,50 %) |
+| `deposit_fixed_fee_cents` | `BIGINT DEFAULT 0` | Frais fixes sur dépôt en centimes (ex: `25` = 0,25 €) |
+| `withdrawal_fee_bps` | `INTEGER DEFAULT 0` | Frais variables sur retrait en points de base (ex: `100` = 1,00 %) |
+| `withdrawal_fixed_fee_cents` | `BIGINT DEFAULT 0` | Frais fixes sur retrait en centimes (ex: `50` = 0,50 €) |
+| `min_amount_cents` | `BIGINT DEFAULT 500` | Plafond minimum en centimes (ex: `500` = 5,00 €) |
+| `max_amount_cents` | `BIGINT DEFAULT 10000000` | Plafond maximum en centimes |
+| `account_instructions` | `TEXT NULL` | Coordonnées & instructions définies par l'Admin (IBAN plateforme, adresse Crypto, libellé de virement obligatoire) |
+| `settlement_delay_label` | `VARCHAR(60)` | Ex: `"VALIDATION ADMIN (< 1H)"`, `"INSTANTANÉ (< 5S)"` |
+| `timestamps` | `TIMESTAMP` | `created_at`, `updated_at` |
+
+#### D. Nouvelle Table `user_payment_methods` (Comptes & Moyens de Paiement Enregistrés par l'Utilisateur)
+| Colonne | Type SQL | Description |
+| :--- | :--- | :--- |
+| `id` | `BIGINT UNSIGNED` | Primary Key |
+| `user_id` | `BIGINT UNSIGNED` | FK `users(id) ON DELETE CASCADE` |
+| `payment_rail_id` | `BIGINT UNSIGNED` | FK `payment_rails(id) ON DELETE CASCADE` |
+| `label` | `VARCHAR(100)` | Ex: `"Mon Compte BNP Paribas"`, `"Ledger USDC Principal"`, `"Visa Premier •••• 4242"` |
+| `account_identifier` | `VARCHAR(160)` | IBAN, Adresse Crypto `0x...`, ou identifiant masqué |
+| `is_default` | `BOOLEAN DEFAULT 0` | Méthode sélectionnée par défaut |
+| `is_verified` | `BOOLEAN DEFAULT 1` | Statut vérifié |
+| `timestamps` | `TIMESTAMP` | Index sur `(user_id, is_default)` |
+
+#### E. Nouvelle Table `wallet_funding_requests` (Journal & File d'Approbation des Dépôts / Retraits Manuels & Instantanés)
+| Colonne | Type SQL | Description |
+| :--- | :--- | :--- |
+| `id` | `BIGINT UNSIGNED` | Primary Key |
+| `user_id` | `BIGINT UNSIGNED` | FK `users(id) ON DELETE CASCADE` |
+| `wallet_id` | `BIGINT UNSIGNED` | FK `wallets(id) ON DELETE CASCADE` |
+| `payment_rail_id` | `BIGINT UNSIGNED` | Nullable, FK `payment_rails(id) ON DELETE SET NULL` |
+| `user_payment_method_id` | `BIGINT UNSIGNED` | Nullable, FK `user_payment_methods(id) ON DELETE SET NULL` |
+| `direction` | `VARCHAR(20)` | `'DEPOSIT'` ou `'WITHDRAWAL'` |
+| `gross_amount_cents` | `BIGINT` | Montant brut demandé par l'utilisateur (`> 0`) |
+| `fee_cents` | `BIGINT` | Frais calculés selon le rail (ou `0` si `user.is_prime`) |
+| `net_amount_cents` | `BIGINT` | Montant net crédité (pour un dépôt : `gross - fee`) ou versé (pour un retrait : `gross - fee`) |
+| `reference_code` | `VARCHAR(120)` | Référence de virement bancaire, Hash TX Crypto, ou IBAN de destination |
+| `status` | `VARCHAR(24)` | `'PENDING_ADMIN'`, `'SETTLED'`, `'REJECTED'` |
+| `idempotency_key` | `VARCHAR(140) UNIQUE` | Clé d'idempotence unique |
+| `processed_by_admin_id` | `BIGINT UNSIGNED NULL` | FK `users(id)` |
+| `admin_notes` | ` VARCHAR(255) NULL` | Note de validation ou motif de rejet par l'Admin |
+| `processed_at` | `TIMESTAMP NULL` | Date de règlement sur le Grand Livre |
+| `timestamps` | `TIMESTAMP` | Index sur `(status, direction)` et `(user_id)` |
 
 ---
 
-### 2.4 Page 3 — Espace Membre & Cockpit Opérateur Protégé (`GET /dashboard` — `resources/views/dashboard/index.blade.php`, route `dashboard`)
-- **Protection :**
-  - Protégé par le middleware `auth` : tout visiteur non connecté qui tente d'accéder à `GET /dashboard` est automatiquement redirigé vers `GET /login`.
-- **Topbar & Sidebar du Cockpit :**
-  - Identité complète de l'opérateur connecté (`gamertag`, `email`, badge `role` [`ADMIN`, `ORGANIZER`, `PLAYER`], `elo_rating` en `tabular-nums`, `preferred_class`).
-  - Rappel permanent du `Solde Disponible` et du `Séquestre Verrouillé` en `tabular-nums`.
-  - Lien `← Voir l'Arène Publique (/)`.
-  - **Sélecteur rapide de profil Démo en 1 clic** dans le Cockpit (permettant de basculer entre `ADMIN`, `ORGANIZER`, `RIVAL_HOST`, `VKR_NYX`, `KESTREL_ZERO`, `AETHER_9`, `SOVEREIGN_X` et de recharger immédiatement `/dashboard` sous la nouvelle identité).
-  - Bouton explicite **`Déconnexion`** (`POST /logout` ou `/api/auth/logout` qui invalide la session et redirige vers `GET /`).
-- **Vraie Navigation par Vues/Onglets dans la Sidebar (Zéro `scrollIntoView` !) :**
-  - La Sidebar comporte **4 entrées d'onglets** avec barre verticale active `2px` Or Souverain (`#E5C158`).
-  - Cliquer sur un onglet bascule instantanément l'affichage entre **4 panneaux/vues distincts** (`#cockpit-panel-overview`, `#cockpit-panel-arenas`, `#cockpit-panel-ledger`, `#cockpit-panel-organizer` — **un seul panneau visible à la fois**, les 3 autres ayant la classe `hidden`) :
-  1. **Vue 1 (`overview`) — `Vue d'Ensemble & Portefeuille (Dépôt / Retrait)` :**
-     - Les 4 cartes KPI en grand format (`Solde Disponible`, `Séquestre Verrouillé`, `Gains Cumulés`, `Cote ELO`).
-     - Sélecteur rapide de Loadout actif (`VANGUARD`, `SPECTRE`, `CHRONO`, `VALKYRIE` via `POST /api/profile/loadout`).
-     - Formulaire / Modale de **Dépôt Instantané (`POST /api/wallets/deposit`)** avec boutons de montants rapides (`+50 €`, `+100 €`, `+250 €`, `+1 000 €`) et clé d'idempotence.
-     - Nouveau Formulaire / Modale de **Retrait Bancaire SEPA (`POST /api/wallets/withdraw`)** avec saisie du montant en euros/centimes (`amount_cents`), IBAN de destination (ex: `FR76 3000 6000 0112 3456 7890 189`), clé d'idempotence, débitant atomiquement `balance_cents` avec écriture `WITHDRAWAL` dans `ledger_entries` après verrou `SELECT ... FOR UPDATE`.
-  2. **Vue 2 (`arenas`) — `Mes Arènes, Matchs & Inscriptions` :**
-     - Liste des tournois auxquels l'opérateur connecté est inscrit (`tournament_registrations`), statut de son séquestre (`REGISTERED`, `WINNER_1ST`, `WINNER_2ND`, `WINNER_3RD`, `REFUNDED`), prochains matchs à jouer, et lien direct `Ouvrir l'Arène ↗` (`GET /tournaments/{slug}`).
-     - Catalogue rapide des tournois `OPEN` permettant de s'inscrire (Buy-in) en 1 clic ou d'accéder à la fiche détaillée `/tournaments/{slug}`.
-  3. **Vue 3 (`ledger`) — `Grand Livre Immuable (Ledger Double-Entrée)` :**
-     - Tableau complet des écritures comptables (`ledger_entries`) du portefeuille avec **filtrage instantané par type d'opération** (`ALL`, `DEPOSIT`, `WITHDRAWAL`, `BUY_IN`, `PAYOUT`, `REFUND`).
-     - Colonnes en `tabular-nums` : `ID`, `Date`, `Type`, `Description / Tournoi`, `Débit`, `Crédit`, `Solde Avant`, `Solde Après` et `Clé d'Idempotence`.
-  4. **Vue 4 (`organizer`) — `Console Organisateur & Arbitrage Officiel` :**
-     - Création d'une nouvelle Ligue / Tournoi (`POST /api/tournaments`).
-     - Liste de gestion des tournois avec indicateur de permission (`PROPRIÉTAIRE / ADMIN` vs `LECTURE SEULE`).
-     - Simulateur / Saisie des scores des matchs de l'arbre (Demi-finales, Petite Finale 3e place, Grande Finale).
-     - Exécution directe de l'**Homologation du Podium & Distribution 60/30/10 (`POST /api/tournaments/{id}/settle`)** avec aperçu mathématique en direct (`Rake 8%`, `Pool Net 92%`, `1er 60%`, `2e 30%`, `3e 10%`) et de l'**Annulation & Remboursement 100 % (`POST /api/tournaments/{id}/cancel`)**.
+### 2.3 Mathématiques Exactes & Conservation Monétaire des 5 Flux de Revenus (`ledger_entries`)
+
+Tous les nouveaux types d'écritures dans `LedgerEntry` respectent **l'invariant absolu** :
+1. Pour chaque `Wallet` :
+   $$\text{wallet.balance\_cents} = \sum \text{credit\_cents} - \sum \text{debit\_cents}$$
+2. Sur l'ensemble de la plateforme (tous les portefeuilles joueurs, organisateurs, `SYS_ESCROW_VAULT` et `SYS_TREASURY` confondus) :
+   $$\sum_{\text{all wallets}} \text{balance\_cents} = \sum \text{DEPOSIT.credit\_cents} - \sum \text{WITHDRAWAL.debit\_cents}$$
+
+Comment cet invariant global est-il maintenu au centime près sur chaque opération ?
+- **Dépôt avec Frais de Rail configurables (`deposit` ou `approveFundingRequest` de type `DEPOSIT`) :**
+  - Soit $G$ le montant brut déposé (`gross_amount_cents`) et $F$ les frais du rail (`fee_cents`, forcés à `0` si `$user->is_prime` est vrai).
+  - Étape 1 : Le Wallet de l'utilisateur reçoit le crédit externe brut $+G$ (`entry_type = DEPOSIT`, `credit_cents = G`).
+  - Étape 2 (si $F > 0$) : Le Wallet de l'utilisateur est débité de $-F$ (`entry_type = DEPOSIT_FEE_DEBIT`, `debit_cents = F`) et le Wallet `SYS_TREASURY` est crédité simultanément de $+F$ (`entry_type = PLATFORM_PAYMENT_FEE_CREDIT`, `credit_cents = F`).
+  - Résultat : L'utilisateur voit son solde augmenter de $G - F$ (`net_amount_cents`), `SYS_TREASURY` encaisse $+F$, et la somme globale des soldes a augmenté exactement de $+G$ (`DEPOSIT`) !
+- **Retrait avec Frais de Rail configurables (`withdraw` ou `approveFundingRequest` de type `WITHDRAWAL`) :**
+  - Soit $W$ le montant brut débité du Wallet de l'utilisateur (`gross_amount_cents`) et $F$ les frais de retrait du rail (`fee_cents`, forcés à `0` si `$user->is_prime` est vrai, avec $F < W$). Le montant net envoyé vers le compte bancaire/crypto externe est $N = W - F$.
+  - Étape 1 (si $F > 0$) : Le Wallet de l'utilisateur est débité de $-F$ (`entry_type = WITHDRAWAL_FEE_DEBIT`, `debit_cents = F`) et `SYS_TREASURY` est crédité de $+F$ (`entry_type = PLATFORM_PAYMENT_FEE_CREDIT`, `credit_cents = F`).
+  - Étape 2 : Le Wallet de l'utilisateur est débité de $-N$ (`entry_type = WITHDRAWAL`, `debit_cents = N`).
+  - Résultat : Le Wallet de l'utilisateur a été débité au total de $F + N = W$, `SYS_TREASURY` a encaissé $+F$ de commission de retrait, et le flux sortant externe (`WITHDRAWAL`) est exactement $N$ !
+- **Souscription au Pass `★ VALKYR PRIME` (`POST /api/wallets/subscribe-prime` — `1 900` centimes = `19,00 €`) :**
+  - Transfert interne en partie double : Débit de `1900` centimes sur le Wallet du joueur (`PRIME_SUBSCRIPTION_DEBIT`) $\rightarrow$ Crédit de `1900` centimes sur `SYS_TREASURY` (`PRIME_SUBSCRIPTION_CREDIT`). Active `is_prime = true`, `prime_expires_at = now()->addDays(30)` et `+50` ELO.
+- **Boost de Visibilité d'Arène (`POST /api/tournaments/{tournament}/boost` — `2 500` centimes = `25,00 €`) :**
+  - Transfert interne en partie double : Débit de `2500` centimes sur le Wallet de l'Organisateur/Admin (`ARENA_BOOST_DEBIT`) $\rightarrow$ Crédit de `2500` centimes sur `SYS_TREASURY` (`ARENA_BOOST_CREDIT`). Active `tournament.is_featured = true`.
+- **Injection de Dotation Garantie Sponsorisée (`POST /api/tournaments/{tournament}/sponsor`) :**
+  - Transfert interne en partie double : Débit de `amount_cents` sur le Wallet du sponsor (`SPONSOR_POOL_DEBIT`) $\rightarrow$ Crédit de `amount_cents` sur `SYS_ESCROW_VAULT` (`SPONSOR_POOL_CREDIT`). Incrémente `tournament.escrow_pool_cents += amount_cents` et `tournament.sponsored_guarantee_cents += amount_cents`.
+- **Clôture de Tournoi avec Partage de Commission Organisateur (`settleTournament`) :**
+  - Soit $P$ le `escrow_pool_cents` total du tournoi, `rake_bps` la commission totale (défaut `800` bps = 8 %), et `organizer_share_bps` la part organisateur (défaut `200` bps = 2 %, plafonnée à `rake_bps`).
+  - `$totalRakeCents = intdiv($P * $rakeBps, 10000)`
+  - Si l'organisateur du tournoi a le rôle `ORGANIZER` (et n'est pas `SYS_TREASURY`) :
+    * `$organizerRakeCents = intdiv($P * $organizerShareBps, 10000)` crédité au Wallet de l'Organisateur (`ORGANIZER_RAKE_SHARE_CREDIT`).
+    * `$platformRakeCents = $totalRakeCents - $organizerRakeCents` crédité au Wallet `SYS_TREASURY` (`PLATFORM_RAKE_CREDIT`).
+  - Sinon (`organizer` est `ADMIN`), `$organizerRakeCents = 0` et `$platformRakeCents = $totalRakeCents`.
+  - Le Pool Net `$netPoolCents = $P - $totalRakeCents` est réparti `60 % / 30 % / 10 %` entre les 1er, 2e et 3e places.
+  - Invariant vérifié : `$platformRakeCents + $organizerRakeCents + $firstPrize + $secondPrize + $thirdPrize === $P`.
 
 ---
 
-### 2.5 Page 4 — Page Dédiée d'une Arène / Ligue (`GET /tournaments/{tournament:slug}` — `resources/views/tournaments/show.blade.php`, route `tournaments.show`)
-- **En-tête Complet de l'Arène :**
-  - Fil d'Ariane (`← Retour aux Arènes (/)` et `Mon Cockpit (/dashboard)` si connecté).
-  - Titre du tournoi, Jeu (`VALORANT // PROTOCOL`, `COUNTER-STRIKE 2`, `APEX // SOVEREIGN`, `LEAGUE OF LEGENDS`), Format (`5v5` / `1v1`), Badge de Statut (`OPEN`, `LOCKED`, `IN_PROGRESS`, `SETTLED`, `CANCELLED`), Gamertag de l'Organisateur.
-  - Panneau financier en `tabular-nums` : Buy-in unitaire (`entry_fee_cents`), Cagnotte Séquestrée (`escrow_pool_cents`), et décomposition mathématique exacte :
-    * **Commission Plateforme (`Rake 8% / 800 bps`)**
-    * **Pool Net Joueurs (`92%`)**
-    * **Dotation 1re Place (`60%` + reliquat d'arrondi entier)**
-    * **Dotation 2e Place (`30%`)**
-    * **Dotation 3e Place (`10%`)**
-- **Bouton d'Action Contextuel :**
-  - Si `OPEN` et connecté (non inscrit) : Bouton primaire `S'inscrire au Tournoi (Buy-in) ↗` avec sélecteur de classe d'arsenal (`VANGUARD`, `SPECTRE`, `CHRONO`, `VALKYRIE`).
-  - Si `OPEN` et non connecté (`@guest`) : Bouton `Se connecter pour rejoindre ↗` redirigeant vers `/login`.
-  - Si l'opérateur connecté est déjà inscrit : Badge émeraude/or `✓ DÉJÀ INSCRIT EN SÉQUESTRE` avec montant verrouillé et classe choisie.
-- **Arbre de Tournoi Interactif (Bracket Complet) :**
-  - Visualisation structurée des **Demi-finales (Match 1 & Match 2)**, de la **Petite Finale (Match 3e Place — 10% du Pool Net)** et de la **Grande Finale (1re Place 60% / 2e Place 30%)** avec les opérateurs inscrits, leurs cotes ELO, les scores des matchs et le podium final couronné si le statut est `SETTLED`.
-- **Liste des Opérateurs Inscrits (Roster) :**
-  - Grille/Tableau des participants inscrits avec numéro de seed, Gamertag, classe d'arsenal, cote ELO, statut (`REGISTERED`, `WINNER_1ST`, `WINNER_2ND`, `WINNER_3RD`, `REFUNDED`), montant payé en séquestre et cashprize remporté.
-- **Journal d'Audit Séquestre de l'Arène :**
-  - Tableau des écritures `ledger_entries` rattachées à ce `tournament_id` (`BUY_IN_ESCROW_DEBIT`, `BUY_IN_ESCROW_CREDIT`, `ESCROW_RELEASE_DEBIT`, `PLATFORM_RAKE_CREDIT`, `PRIZE_PAYOUT_1ST`, `PRIZE_PAYOUT_2ND`, `PRIZE_PAYOUT_3RD`, `TOURNAMENT_REFUND_*`).
-- **Panneau d'Arbitrage Officiel (visible et actif pour l'`ORGANIZER` propriétaire ou `ADMIN`) :**
-  - Formulaire de sélection du Podium (`1st`, `2nd`, `3rd`) et bouton `Homologuer & Distribuer le Cashprize (60/30/10)` (`POST /api/tournaments/{id}/settle`).
-  - Formulaire d'annulation d'urgence `Annuler l'Arène & Rembourser 100 % du Séquestre` (`POST /api/tournaments/{id}/cancel`).
+## 3. Nouvelle Page 5 — Surface d'Administration Souveraine (`GET /admin` — `resources/views/admin/index.blade.php`)
+
+### 3.1 Protection & Navigation
+- **Route :** `GET /admin` (route nommée `admin.index`), protégée par le middleware `auth` et une vérification stricte `user->isAdmin()` (`403 Forbidden` pour tout `PLAYER` ou `ORGANIZER`).
+- **Accès rapide :**
+  - Dans le Header de `GET /` et la Topbar/Sidebar de `GET /dashboard`, si `auth()->user()->isAdmin()`, affiche un bouton Or Souverain **`Commandement Admin (/admin) ↗`**.
+  - Barre de bascule rapide de rôle Démo présente également sur `/admin`.
+
+### 3.2 Les 5 Panneaux de Commandement de `/admin` (Navigation par Onglets Exclusifs sans `scrollIntoView`)
+1. **Panneau 1 (`data-admin-panel="treasury"`) — `Trésorerie Souveraine, Statistiques de Revenus & Audit d'Intégrité` :**
+   - **8 Cartes KPI en `tabular-nums` :**
+     1. `Solde Trésorerie Plateforme (SYS_TREASURY)`
+     2. `Fonds Verrouillés en Séquestre (SYS_ESCROW_VAULT)`
+     3. `Volume Brut Global (GMV Dépôts)`
+     4. `Revenus Rake Tournois (Net Plateforme)`
+     5. `Revenus Frais de Dépôt / Retrait`
+     6. `Revenus Abonnements ★ VALKYR PRIME`
+     7. `Revenus Boosts d'Arènes Sponsorisées`
+     8. `Commissions Reversées aux Organisateurs (RevShare)`
+   - **Audit Mathématique en Direct (`Ledger Health Check`) :** Tableau vérifiant que **100 % des portefeuilles** ont `balance_cents === SUM(credits) - SUM(debits)` et que l'invariant global `SUM(wallets) === SUM(DEPOSIT) - SUM(WITHDRAWAL)` est à `0,00 €` d'écart.
+   - **Action Trésorerie :** Permet à l'Admin d'injecter des fonds de dotation ou d'ajuster un portefeuille avec motif d'audit.
+
+2. **Panneau 2 (`data-admin-panel="rails"`) — `Gestion des Moyens de Dépôt/Retrait, Frais & Demandes Manuelles` :**
+   - **Section A — File d'Approbation des Dépôts & Retraits Manuels (`wallet_funding_requests` en statut `PENDING_ADMIN` et historique récent) :**
+     * Affiche l'opérateur, la méthode choisie (`Virement SEPA Manuel`, `Crypto USDT Manuel`, etc.), le montant brut, les frais calculés, le montant net, la référence (`reference_code`), et 2 boutons d'action atomiques :
+       - **`Approuver & Régler sur le Wallet ✓`** (`POST /api/admin/funding-requests/{id}/approve`) : exécute immédiatement l'écriture en partie double sur le Wallet de l'utilisateur et crédite les frais à `SYS_TREASURY`.
+       - **`Rejeter ✕`** (`POST /api/admin/funding-requests/{id}/reject`).
+   - **Section B — Configuration des Rails de Paiement existants (`payment_rails`) :**
+     * Tableau/Cartes permettant de modifier en direct pour chaque méthode :
+       - `deposit_fee_bps` & `deposit_fixed_fee_cents`
+       - `withdrawal_fee_bps` & `withdrawal_fixed_fee_cents`
+       - `min_amount_cents` & `max_amount_cents`
+       - `requires_admin_approval` (Validation Manuelle Admin vs Crédit/Débit Instantané)
+       - `is_active` (Actif / Désactivé)
+       - `account_instructions` (IBAN, adresse Crypto, consignes de référence)
+   - **Section C — Créer une Nouvelle Méthode de Dépôt / Retrait (`POST /api/admin/payment-rails`) :**
+     * Formulaire permettant à l'Admin d'ajouter un nouveau moyen de paiement personnalisé avec ses frais, limites et instructions.
+
+3. **Panneau 3 (`data-admin-panel="operators"`) — `Gestion des Opérateurs, Wallets, Rôles & Abonnements PRIME` :**
+   - Tableau complet des utilisateurs (`whitespace-nowrap tabular-nums`) affichant `ID`, `Gamertag`, `Email`, `Rôle`, `Statut ★ PRIME`, `Statut Wallet (ACTIF / GELÉ)`, `Solde Disponible`, `Séquestre`, `Gains Cumulés`, `Cote ELO`.
+   - **Actions Admin par ligne :**
+     * Changer le rôle (`PLAYER` ⇄ `ORGANIZER`) via `POST /api/admin/users/{user}/update-status`.
+     * Activer/Révoquer le statut `★ VALKYR PRIME` gratuitement ou prolonger l'abonnement.
+     * Geler / Dégeler le portefeuille (`is_frozen`).
+     * Créditer un bonus / dotation manuelle sur le Wallet de l'opérateur (`POST /api/admin/users/{user}/credit-wallet`).
+
+4. **Panneau 4 (`data-admin-panel="arenas"`) — `Pilotage Global des Arènes, Rake Dynamique, RevShare & Sponsoring` :**
+   - Tableau et contrôles sur tous les tournois permettant à l'Admin de :
+     * Ajuster le `rake_bps` (ex: `500` à `1500` bps) et l'`organizer_share_bps` (ex: `0` à `500` bps) via `POST /api/admin/tournaments/{tournament}/configure`.
+     * Activer / Désactiver la mise en avant `★ FEATURED` (`is_featured`).
+     * Injecter une dotation garantie sponsorisée (`POST /api/tournaments/{tournament}/sponsor`).
+     * Ouvrir la console de règlement 60/30/10 ou d'annulation 100 %.
+
+5. **Panneau 5 (`data-admin-panel="ledger"`) — `Explorateur Maître du Grand Livre (`ledger_entries` Global)` :**
+   - Vue intégrale sur les écritures comptables de tous les portefeuilles (y compris `SYS_TREASURY` et `SYS_ESCROW_VAULT`) avec filtre par type d'opération (`ALL`, `DEPOSIT`, `WITHDRAWAL`, `PLATFORM_RAKE_CREDIT`, `ORGANIZER_RAKE_SHARE_CREDIT`, `PLATFORM_PAYMENT_FEE_CREDIT`, `PRIME_SUBSCRIPTION_CREDIT`, `ARENA_BOOST_CREDIT`, `SPONSOR_POOL_CREDIT`).
 
 ---
 
-## 3. Contrat Backend ⇄ Front-End & Spécification du Retrait SEPA (`withdraw`)
+## 4. Enrichissement de l'Espace Membre (`GET /dashboard`) et des Arènes (`GET /` & `GET /tournaments/{slug}`)
 
-### 3.1 Nouvel Endpoint de Retrait Bancaire SEPA (`POST /api/wallets/withdraw` & `POST /wallets/withdraw`)
-- **Validation (`WithdrawWalletRequest`) :**
-  - `amount_cents` : `required`, entier strict (`preg_match('/^-?\d+$/')`, rejetant tout `float` comme `125.50`), `min:100` (`1,00 €`), `max:50000000`.
-  - `iban` : `nullable|string|max:64` (défaut : `'FR76 3000 6000 0112 3456 7890 189'`).
-  - `idempotency_key` : `required|string|max:140`.
-- **Exécution Atomique (`EscrowLedgerService::withdraw`) :**
-  1. Ouvrir `DB::transaction()`.
-  2. Vérifier l'idempotence via `LedgerEntry::where('idempotency_key', $key)->first()` :
-     - Si la clé existe déjà pour le même `wallet_id`, `entry_type === WITHDRAWAL` et `debit_cents === $amountCents`, retourner `{ wallet, ledger_entry, idempotent_replay: true }` en `200 OK` sans re-débiter.
-     - Si la clé existe avec des paramètres différents, lever `IdempotencyConflictException` (`409 Conflict`).
-  3. Verrouiller le portefeuille de l'opérateur avec `Wallet::whereKey($userWallet->id)->lockForUpdate()->firstOrFail()`.
-  4. **Strictement APRÈS l'acquisition du verrou**, vérifier `$lockedWallet->balance_cents >= $amountCents` (sinon lever `InsufficientFundsException` ➔ `422 Unprocessable Entity`).
-  5. Débiter `$lockedWallet->balance_cents -= $amountCents` et insérer l'écriture immuable `LedgerEntry::TYPE_WITHDRAWAL` (`debit_cents = $amountCents`, `credit_cents = 0`, `balance_before_cents`, `balance_after_cents`).
-  6. Invariant global mis à jour :
-     - Pour chaque portefeuille : `wallet.balance_cents === SUM(credit_cents) - SUM(debit_cents)`.
-     - Sur l'ensemble de la plateforme : `SUM(wallets.balance_cents) === SUM(DEPOSIT.credit_cents) - SUM(WITHDRAWAL.debit_cents)`.
+1. **Dans `GET /dashboard` — Onglet 1 (`Vue d'Ensemble, Portefeuille & Moyens de Paiement`) :**
+   - **Sélecteur de Méthode de Dépôt & Calculateur de Frais en Temps Réel :**
+     * L'utilisateur choisit parmi les `payment_rails` actifs configurés par l'Admin (ex: `SEPA Instantané (0% frais)`, `Carte Bancaire Instantanée (1,50% + 0,25 €)`, `Crypto USDT/USDC (0,50%)`, `Virement Bancaire Manuel (Validation Admin)`).
+     * Affiche les **instructions/coordonnées définies par l'Admin** pour le rail sélectionné, un champ `reference_code` (référence de virement / hash TX / carte enregistrée), et le **calculateur dynamique en `tabular-nums`** : `Montant Brut`, `Frais du Rail` (`0,00 €` barré si l'opérateur est `★ VALKYR PRIME`), `Net Crédité sur Wallet`, et le mode (`CRÉDIT INSTANTANÉ` vs `SOUMIS À VALIDATION ADMIN`).
+   - **Sélecteur de Méthode de Retrait & Calculateur de Frais en Temps Réel :**
+     * L'utilisateur choisit un rail de retrait actif ou l'un de ses **Moyens de Paiement Enregistrés (`user_payment_methods`)** (IBAN vérifié, adresse Crypto, etc.), voit les frais exacts et le net versé, et soumet son retrait.
+   - **Gestionnaire de Mes Moyens de Paiement Enregistrés (`user_payment_methods`) :**
+     * Permet d'ajouter un nouveau compte/IBAN/Wallet Crypto favori (`POST /api/payment-methods`) ou d'en supprimer un (`DELETE /api/payment-methods/{id}`).
+   - **Carte d'Abonnement `★ VALKYR PRIME` (`19,00 € / 30 jours` payé via le Wallet) :**
+     * Affiche le statut actuel (`MEMBRE ★ PRIME ACTIF — 0% FRAIS DE DÉPÔT/RETRAIT` ou bouton `Activer ★ VALKYR PRIME avec mon Wallet (19,00 €) ↗` via `POST /api/wallets/subscribe-prime`).
+   - **Historique de mes Demandes de Dépôt / Retrait (`wallet_funding_requests`) :**
+     * Affiche l'état (`PENDING_ADMIN`, `SETTLED`, `REJECTED`) des opérations soumises.
 
-### 3.2 Récapitulatif Complet des Routes Web & API
-| Méthode & URI | Nom de Route | Middleware | Rôle / Comportement |
-| :--- | :--- | :--- | :--- |
-| `GET /` | `home` | `web` | Page 1 : Vitrine publique 8K (Hero, Live HUD 60 FPS, Scrollytelling, Arsenal, Catalogue, Leaderboard — **sans Auth ni Cockpit en bas de page**) |
-| `GET /login` | `login` | `web`, `guest` | Page 2 : Split-Screen Auth 50/50 (onglet Connexion actif par défaut + Démo 1-clic) |
-| `GET /register` | `register` | `web`, `guest` | Page 2 : Split-Screen Auth 50/50 (onglet Créer un compte actif par défaut + Démo 1-clic) |
-| `GET /dashboard` | `dashboard` | `web`, `auth` | Page 3 : Cockpit Membre protégé avec 4 vues par onglets (`overview`, `arenas`, `ledger`, `organizer`) |
-| `GET /tournaments/{tournament:slug}` | `tournaments.show` | `web` | Page 4 : Page dédiée d'une Arène (Bracket, Roster, Audit Ledger, Inscription Buy-in & Arbitrage) |
-| `POST /api/auth/login` & `POST /login` | `api.auth.login` | `web`, `throttle:auth` | Authentification opérateur ➔ redirige vers `/dashboard` |
-| `POST /api/auth/register` & `POST /register` | `api.auth.register` | `web`, `throttle:auth` | Création de compte (`PLAYER` ou `ORGANIZER` si `account_type=ORGANIZER`, jamais `ADMIN`) ➔ redirige vers `/dashboard` |
-| `POST /api/auth/demo-login` & `POST /demo-login` | `api.auth.demo` | `web`, `throttle:auth` | Connexion rapide Démo 1-clic (liste blanche) ➔ redirige vers `/dashboard` |
-| `POST /api/auth/logout` & `POST /logout` | `api.auth.logout` / `logout` | `web` | Déconnexion ➔ redirige vers `/` |
-| `POST /api/wallets/deposit` & `POST /wallets/deposit` | `api.wallets.deposit` | `web`, `auth`, `throttle:financial` | Dépôt en centimes entiers avec clé d'idempotence |
-| `POST /api/wallets/withdraw` & `POST /wallets/withdraw` | `api.wallets.withdraw` | `web`, `auth`, `throttle:financial` | Retrait bancaire SEPA en centimes entiers avec verrou pessimiste & clé d'idempotence |
-| `GET /api/wallets/{wallet}` | `api.wallets.show` | `web`, `auth` | Inspection d'un portefeuille (protégé par `WalletPolicy::view` Anti-IDOR) |
-| `GET /api/tournaments` | `api.tournaments.index` | `web` | Catalogue filtrable en JSON |
-| `POST /api/tournaments` & `POST /tournaments` | `api.tournaments.store` | `web`, `auth`, `throttle:financial` | Création de tournoi (`ORGANIZER` ou `ADMIN` via `TournamentPolicy::create`) |
-| `POST /api/tournaments/{tournament}/register` | `api.tournaments.register` | `web`, `auth`, `throttle:financial` | Buy-in atomique vers séquestre (`ORDER BY id ASC` + `lockForUpdate()`) |
-| `POST /api/tournaments/{tournament}/settle` | `api.tournaments.settle` | `web`, `auth`, `throttle:financial` | Clôture officielle : Rake 8 % (`800 bps`) + Distribution 60 % / 30 % / 10 % (`TournamentPolicy::settle`) |
-| `POST /api/tournaments/{tournament}/cancel` | `api.tournaments.cancel` | `web`, `auth`, `throttle:financial` | Annulation & Remboursement 100 % du séquestre (`TournamentPolicy::cancel`) |
+2. **Dans `GET /dashboard` — Onglet 4 (`Console Organisateur`) & `GET /tournaments/{slug}` :**
+   - Lors de la création ou de la gestion d'un tournoi, l'Organisateur peut :
+     * Choisir le `rake_bps` et voir sa **Part Organisateur (`organizer_share_bps`, ex: 2,00 % du Pool Brut reversés sur son Wallet à la clôture)** !
+     * Activer le **Boost de Visibilité `★ FEATURED` (`25,00 €` débités de son Wallet)** (`POST /api/tournaments/{id}/boost`).
+     * Injecter une **Dotation Sponsorisée (`POST /api/tournaments/{id}/sponsor`)** depuis son Wallet pour gonfler le Cashprize garanti.

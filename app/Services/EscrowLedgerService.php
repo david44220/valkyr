@@ -9,19 +9,26 @@ use App\Exceptions\InsufficientFundsException;
 use App\Exceptions\InvalidFinancialOperationException;
 use App\Exceptions\TournamentStateConflictException;
 use App\Models\LedgerEntry;
+use App\Models\PaymentRail;
 use App\Models\Tournament;
 use App\Models\TournamentRegistration;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Models\WalletFundingRequest;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 final class EscrowLedgerService
 {
     public const string ESCROW_VAULT_EMAIL = 'escrow.vault@valkyr.arena';
 
     public const string PLATFORM_TREASURY_EMAIL = 'treasury@valkyr.arena';
+
+    public const int PRIME_SUBSCRIPTION_PRICE_CENTS = 1900; // 19,00 €
+
+    public const int ARENA_BOOST_PRICE_CENTS = 2500; // 25,00 €
 
     /**
      * Ensure system users and their corresponding wallets exist.
@@ -30,34 +37,148 @@ final class EscrowLedgerService
      */
     public function ensureSystemWallets(): array
     {
-        $escrowUser = User::firstOrCreate(
-            ['email' => self::ESCROW_VAULT_EMAIL],
-            [
+        $escrowUser = User::where('email', self::ESCROW_VAULT_EMAIL)->first()
+            ?? User::create([
+                'email' => self::ESCROW_VAULT_EMAIL,
                 'name' => 'VALKYR Escrow Vault',
                 'gamertag' => 'SYS_ESCROW_VAULT',
                 'password' => Hash::make('SystemVault_Unreachable_Key_99!'),
                 'role' => User::ROLE_ADMIN,
                 'elo_rating' => 3000,
                 'preferred_class' => 'VANGUARD',
-            ]
-        );
+            ]);
 
-        $treasuryUser = User::firstOrCreate(
-            ['email' => self::PLATFORM_TREASURY_EMAIL],
-            [
+        $treasuryUser = User::where('email', self::PLATFORM_TREASURY_EMAIL)->first()
+            ?? User::create([
+                'email' => self::PLATFORM_TREASURY_EMAIL,
                 'name' => 'VALKYR Platform Treasury',
                 'gamertag' => 'SYS_TREASURY',
                 'password' => Hash::make('SystemTreasury_Unreachable_Key_99!'),
                 'role' => User::ROLE_ADMIN,
                 'elo_rating' => 3000,
                 'preferred_class' => 'VALKYRIE',
-            ]
-        );
+            ]);
 
         return [
             'escrow' => $this->getOrCreateWallet($escrowUser),
             'treasury' => $this->getOrCreateWallet($treasuryUser),
         ];
+    }
+
+    /**
+     * Ensure default configurable payment rails exist in the database.
+     */
+    public function ensureDefaultPaymentRails(): void
+    {
+        $defaults = [
+            [
+                'code' => 'SEPA_INSTANT',
+                'name' => 'SEPA Instantané Express (Auto)',
+                'provider' => 'Banque Souveraine SEPA',
+                'method_type' => PaymentRail::TYPE_BANK_TRANSFER,
+                'supports_deposit' => true,
+                'supports_withdrawal' => true,
+                'requires_admin_approval' => false,
+                'is_active' => true,
+                'deposit_fee_bps' => 0,
+                'deposit_fixed_fee_cents' => 0,
+                'withdrawal_fee_bps' => 0,
+                'withdrawal_fixed_fee_cents' => 0,
+                'min_amount_cents' => 100,
+                'max_amount_cents' => 50000000,
+                'account_instructions' => 'IBAN Souverain : FR76 3000 6000 0199 8877 6655 441 — BIC : VKRAPARIXXX — Règlement SEPA Instantané automatique sur Wallet.',
+                'settlement_delay_label' => 'INSTANTANÉ (< 5S)',
+            ],
+            [
+                'code' => 'SEPA_MANUAL',
+                'name' => 'Virement Bancaire SEPA (Validation Admin)',
+                'provider' => 'Trésorerie Manuelle VALKYR',
+                'method_type' => PaymentRail::TYPE_BANK_TRANSFER,
+                'supports_deposit' => true,
+                'supports_withdrawal' => true,
+                'requires_admin_approval' => true,
+                'is_active' => true,
+                'deposit_fee_bps' => 0,
+                'deposit_fixed_fee_cents' => 0,
+                'withdrawal_fee_bps' => 50,
+                'withdrawal_fixed_fee_cents' => 100,
+                'min_amount_cents' => 1000,
+                'max_amount_cents' => 100000000,
+                'account_instructions' => 'IBAN Trésorerie Manuelle : FR76 3000 6000 0100 1122 3344 999 — Indiquez obligatoirement votre Gamertag en référence. Réglé par un Officier Admin dans /admin.',
+                'settlement_delay_label' => 'VALIDATION ADMIN (< 1H)',
+            ],
+            [
+                'code' => 'STRIPE_CARD',
+                'name' => 'Carte Bancaire Instantanée (Visa / Mastercard)',
+                'provider' => 'Stripe Treasury 3DS',
+                'method_type' => PaymentRail::TYPE_CARD,
+                'supports_deposit' => true,
+                'supports_withdrawal' => false,
+                'requires_admin_approval' => false,
+                'is_active' => true,
+                'deposit_fee_bps' => 150,
+                'deposit_fixed_fee_cents' => 25,
+                'withdrawal_fee_bps' => 0,
+                'withdrawal_fixed_fee_cents' => 0,
+                'min_amount_cents' => 500,
+                'max_amount_cents' => 10000000,
+                'account_instructions' => ' Passerelle 3D-Secure v2 — Frais 1,50 % + 0,25 € (0 % pour les abonnés ★ VALKYR PRIME).',
+                'settlement_delay_label' => 'INSTANTANÉ (< 2S)',
+            ],
+            [
+                'code' => 'CRYPTO_USDT',
+                'name' => 'Crypto USDT / USDC (ERC-20 & TRC-20)',
+                'provider' => 'Tether / Circle On-Chain',
+                'method_type' => PaymentRail::TYPE_CRYPTO,
+                'supports_deposit' => true,
+                'supports_withdrawal' => true,
+                'requires_admin_approval' => false,
+                'is_active' => true,
+                'deposit_fee_bps' => 50,
+                'deposit_fixed_fee_cents' => 0,
+                'withdrawal_fee_bps' => 100,
+                'withdrawal_fixed_fee_cents' => 100,
+                'min_amount_cents' => 1000,
+                'max_amount_cents' => 50000000,
+                'account_instructions' => 'Vault On-Chain : 0x9F8c4E7A20B51D62E83c17A9004B2D819A11VKR — Indiquez le Hash TX (0x...) ou votre adresse de réception.',
+                'settlement_delay_label' => 'ON-CHAIN (12 BLOCS)',
+            ],
+            [
+                'code' => 'OTC_VOUCHER_MANUAL',
+                'name' => 'Guichet OTC & Bon Trésorerie (Validation Admin)',
+                'provider' => 'Commandement Souverain OTC',
+                'method_type' => PaymentRail::TYPE_MANUAL_VOUCHER,
+                'supports_deposit' => true,
+                'supports_withdrawal' => true,
+                'requires_admin_approval' => true,
+                'is_active' => true,
+                'deposit_fee_bps' => 100,
+                'deposit_fixed_fee_cents' => 0,
+                'withdrawal_fee_bps' => 100,
+                'withdrawal_fixed_fee_cents' => 0,
+                'min_amount_cents' => 2500,
+                'max_amount_cents' => 100000000,
+                'account_instructions' => 'Compensation institutionnelle ou Bon OTC validé manuellement par l\'Admin dans le Back-Office /admin.',
+                'settlement_delay_label' => 'VALIDATION ADMIN',
+            ],
+        ];
+
+        $existingCodes = PaymentRail::whereIn('code', array_column($defaults, 'code'))
+            ->pluck('code')
+            ->all();
+
+        if (count($existingCodes) === count($defaults)) {
+            return;
+        }
+
+        foreach ($defaults as $railData) {
+            if (! in_array($railData['code'], $existingCodes, true)) {
+                PaymentRail::firstOrCreate(
+                    ['code' => $railData['code']],
+                    $railData
+                );
+            }
+        }
     }
 
     /**
@@ -77,16 +198,41 @@ final class EscrowLedgerService
     }
 
     /**
-     * Deposit integer cents into a user's wallet with strict idempotency and pessimistic row locking.
+     * Ensure the user's wallet is not administratively frozen.
+     */
+    public function assertWalletNotFrozen(User $user): void
+    {
+        if ((bool) ($user->getAttributes()['is_frozen'] ?? false)) {
+            throw new InvalidFinancialOperationException(
+                "Opération refusée : le portefeuille de l'opérateur {$user->gamertag} est actuellement gelé par l'Administration Souveraine."
+            );
+        }
+    }
+
+    /**
+     * Deposit integer cents into a user's wallet with optional PaymentRail fee calculation
+     * and support for both instant settlement and manual Admin approval queue.
      *
-     * @return array{wallet: Wallet, ledger_entry: LedgerEntry, idempotent_replay: bool}
+     * @return array{
+     *     wallet: Wallet,
+     *     ledger_entry: LedgerEntry|null,
+     *     funding_request?: WalletFundingRequest|null,
+     *     pending_approval?: bool,
+     *     fee_cents?: int,
+     *     net_amount_cents?: int,
+     *     idempotent_replay: bool
+     * }
      */
     public function deposit(
         User $user,
         int $amountCents,
         string $idempotencyKey,
-        string $description = 'Dépôt de fonds sur portefeuille VALKYR // ARENA'
+        string $description = 'Dépôt de fonds sur portefeuille VALKYR // ARENA',
+        ?int $paymentRailId = null,
+        ?string $referenceCode = null
     ): array {
+        $this->assertWalletNotFrozen($user);
+
         $trimmedKey = trim($idempotencyKey);
         if ($trimmedKey === '') {
             throw new InvalidFinancialOperationException('La clé d\'idempotence est obligatoire.');
@@ -96,9 +242,77 @@ final class EscrowLedgerService
             throw new InvalidFinancialOperationException('Le montant du dépôt en centimes doit être un entier strictement positif (entre 1 et 100 000 000 centimes).');
         }
 
-        $initialWallet = $this->getOrCreateWallet($user);
+        $rail = null;
+        $feeCents = 0;
 
-        return DB::transaction(function () use ($user, $initialWallet, $amountCents, $trimmedKey, $description): array {
+        if ($paymentRailId !== null) {
+            $rail = PaymentRail::find($paymentRailId);
+            if ($rail === null || ! $rail->is_active || ! $rail->supports_deposit) {
+                throw new InvalidFinancialOperationException('Cette méthode de dépôt est inactive ou non supportée.');
+            }
+
+            if ($amountCents < (int) $rail->min_amount_cents || $amountCents > (int) $rail->max_amount_cents) {
+                throw new InvalidFinancialOperationException(
+                    sprintf(
+                        'Le montant pour le rail « %s » doit être compris entre %s et %s.',
+                        $rail->name,
+                        Wallet::formatCents((int) $rail->min_amount_cents),
+                        Wallet::formatCents((int) $rail->max_amount_cents)
+                    )
+                );
+            }
+
+            $feeCents = $rail->calculateDepositFeeCents($amountCents, (bool) ($user->getAttributes()['is_prime'] ?? false));
+            if ($feeCents >= $amountCents) {
+                throw new InvalidFinancialOperationException('Le montant brut du dépôt doit être strictement supérieur aux frais de traitement.');
+            }
+        }
+
+        $netAmountCents = $amountCents - $feeCents;
+        $initialWallet = $this->getOrCreateWallet($user);
+        $systemWallets = $this->ensureSystemWallets();
+        $treasuryWallet = $systemWallets['treasury'];
+        $cleanRef = $referenceCode !== null && trim($referenceCode) !== ''
+            ? trim($referenceCode)
+            : ('DEP-'.strtoupper(Str::random(8)));
+
+        return DB::transaction(function () use (
+            $user,
+            $initialWallet,
+            $treasuryWallet,
+            $amountCents,
+            $feeCents,
+            $netAmountCents,
+            $trimmedKey,
+            $description,
+            $rail,
+            $cleanRef
+        ): array {
+            // 1. Check if a pending/settled funding request with this idempotency key already exists
+            $existingRequest = WalletFundingRequest::where('idempotency_key', $trimmedKey)->first();
+            if ($existingRequest !== null) {
+                if (
+                    (int) $existingRequest->wallet_id === (int) $initialWallet->id
+                    && $existingRequest->direction === WalletFundingRequest::DIRECTION_DEPOSIT
+                    && (int) $existingRequest->gross_amount_cents === $amountCents
+                ) {
+                    $entry = LedgerEntry::where('idempotency_key', $trimmedKey)->first();
+
+                    return [
+                        'wallet' => Wallet::whereKey($initialWallet->id)->firstOrFail(),
+                        'ledger_entry' => $entry,
+                        'funding_request' => $existingRequest,
+                        'pending_approval' => $existingRequest->status === WalletFundingRequest::STATUS_PENDING_ADMIN,
+                        'fee_cents' => (int) $existingRequest->fee_cents,
+                        'net_amount_cents' => (int) $existingRequest->net_amount_cents,
+                        'idempotent_replay' => true,
+                    ];
+                }
+
+                throw new IdempotencyConflictException('Cette clé d\'idempotence a déjà été utilisée pour une demande différente.');
+            }
+
+            // 2. Check LedgerEntry idempotency
             $existingEntry = LedgerEntry::where('idempotency_key', $trimmedKey)->first();
             if ($existingEntry !== null) {
                 if (
@@ -111,6 +325,10 @@ final class EscrowLedgerService
                     return [
                         'wallet' => $freshWallet,
                         'ledger_entry' => $existingEntry,
+                        'funding_request' => null,
+                        'pending_approval' => false,
+                        'fee_cents' => $feeCents,
+                        'net_amount_cents' => $netAmountCents,
                         'idempotent_replay' => true,
                     ];
                 }
@@ -118,52 +336,177 @@ final class EscrowLedgerService
                 throw new IdempotencyConflictException('Cette clé d\'idempotence a déjà été utilisée pour une transaction différente.');
             }
 
-            $lockedWallet = Wallet::whereKey($initialWallet->id)->lockForUpdate()->firstOrFail();
+            // 3. If rail requires manual Admin approval, enqueue in wallet_funding_requests without mutating balance yet
+            if ($rail !== null && $rail->requires_admin_approval) {
+                $fundingRequest = WalletFundingRequest::create([
+                    'user_id' => $user->id,
+                    'wallet_id' => $initialWallet->id,
+                    'payment_rail_id' => $rail->id,
+                    'user_payment_method_id' => null,
+                    'direction' => WalletFundingRequest::DIRECTION_DEPOSIT,
+                    'gross_amount_cents' => $amountCents,
+                    'fee_cents' => $feeCents,
+                    'net_amount_cents' => $netAmountCents,
+                    'reference_code' => $cleanRef,
+                    'status' => WalletFundingRequest::STATUS_PENDING_ADMIN,
+                    'idempotency_key' => $trimmedKey,
+                ]);
 
-            $balanceBefore = (int) $lockedWallet->balance_cents;
-            $balanceAfter = $balanceBefore + $amountCents;
+                return [
+                    'wallet' => Wallet::whereKey($initialWallet->id)->firstOrFail(),
+                    'ledger_entry' => null,
+                    'funding_request' => $fundingRequest,
+                    'pending_approval' => true,
+                    'fee_cents' => $feeCents,
+                    'net_amount_cents' => $netAmountCents,
+                    'idempotent_replay' => false,
+                ];
+            }
 
-            $lockedWallet->balance_cents = $balanceAfter;
-            $lockedWallet->save();
+            // 4. Immediate settlement: lock wallets in deterministic ASC order
+            $walletIds = array_values(array_unique([(int) $initialWallet->id, (int) $treasuryWallet->id]));
+            sort($walletIds);
+
+            $lockedWallets = Wallet::whereIn('id', $walletIds)
+                ->orderBy('id', 'asc')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+
+            /** @var Wallet $lockedUserWallet */
+            $lockedUserWallet = $lockedWallets->get((int) $initialWallet->id);
+            /** @var Wallet $lockedTreasuryWallet */
+            $lockedTreasuryWallet = $lockedWallets->get((int) $treasuryWallet->id);
+
+            $balanceBefore = (int) $lockedUserWallet->balance_cents;
+            $balanceAfterGross = $balanceBefore + $amountCents;
+
+            $lockedUserWallet->balance_cents = $balanceAfterGross;
+            $lockedUserWallet->save();
 
             $entry = LedgerEntry::create([
-                'wallet_id' => $lockedWallet->id,
+                'wallet_id' => $lockedUserWallet->id,
                 'tournament_id' => null,
                 'actor_id' => $user->id,
                 'entry_type' => LedgerEntry::TYPE_DEPOSIT,
                 'debit_cents' => 0,
                 'credit_cents' => $amountCents,
                 'balance_before_cents' => $balanceBefore,
-                'balance_after_cents' => $balanceAfter,
+                'balance_after_cents' => $balanceAfterGross,
                 'idempotency_key' => $trimmedKey,
-                'description' => $description,
+                'description' => $rail !== null ? "{$description} ({$rail->name})" : $description,
                 'metadata' => [
-                    'currency' => $lockedWallet->currency,
+                    'currency' => $lockedUserWallet->currency,
                     'gamertag' => $user->gamertag,
+                    'rail_code' => $rail?->code ?? 'DIRECT_SEPA',
+                    'reference_code' => $cleanRef,
+                    'fee_cents' => $feeCents,
+                    'net_amount_cents' => $netAmountCents,
                 ],
             ]);
 
+            // Deduct payment rail processing fee to Platform Treasury if applicable
+            if ($feeCents > 0 && (int) $lockedUserWallet->id !== (int) $lockedTreasuryWallet->id) {
+                $userFeeBefore = (int) $lockedUserWallet->balance_cents;
+                $userFeeAfter = $userFeeBefore - $feeCents;
+                $lockedUserWallet->balance_cents = $userFeeAfter;
+                $lockedUserWallet->save();
+
+                LedgerEntry::create([
+                    'wallet_id' => $lockedUserWallet->id,
+                    'tournament_id' => null,
+                    'actor_id' => $user->id,
+                    'entry_type' => LedgerEntry::TYPE_DEPOSIT_FEE_DEBIT,
+                    'debit_cents' => $feeCents,
+                    'credit_cents' => 0,
+                    'balance_before_cents' => $userFeeBefore,
+                    'balance_after_cents' => $userFeeAfter,
+                    'idempotency_key' => "{$trimmedKey}:fee_debit",
+                    'description' => 'Frais de traitement dépôt — '.($rail?->name ?? 'Passerelle'),
+                    'metadata' => [
+                        'rail_code' => $rail?->code,
+                        'gross_amount_cents' => $amountCents,
+                    ],
+                ]);
+
+                $treasuryBefore = (int) $lockedTreasuryWallet->balance_cents;
+                $treasuryAfter = $treasuryBefore + $feeCents;
+                $lockedTreasuryWallet->balance_cents = $treasuryAfter;
+                $lockedTreasuryWallet->save();
+
+                LedgerEntry::create([
+                    'wallet_id' => $lockedTreasuryWallet->id,
+                    'tournament_id' => null,
+                    'actor_id' => $user->id,
+                    'entry_type' => LedgerEntry::TYPE_PLATFORM_PAYMENT_FEE_CREDIT,
+                    'debit_cents' => 0,
+                    'credit_cents' => $feeCents,
+                    'balance_before_cents' => $treasuryBefore,
+                    'balance_after_cents' => $treasuryAfter,
+                    'idempotency_key' => "{$trimmedKey}:fee_credit",
+                    'description' => "Commission passerelle dépôt ({$user->gamertag}) — ".($rail?->name ?? 'Passerelle'),
+                    'metadata' => [
+                        'rail_code' => $rail?->code,
+                        'player_gamertag' => $user->gamertag,
+                    ],
+                ]);
+            }
+
+            $fundingRequest = null;
+            if ($rail !== null) {
+                $fundingRequest = WalletFundingRequest::create([
+                    'user_id' => $user->id,
+                    'wallet_id' => $lockedUserWallet->id,
+                    'payment_rail_id' => $rail->id,
+                    'user_payment_method_id' => null,
+                    'direction' => WalletFundingRequest::DIRECTION_DEPOSIT,
+                    'gross_amount_cents' => $amountCents,
+                    'fee_cents' => $feeCents,
+                    'net_amount_cents' => $netAmountCents,
+                    'reference_code' => $cleanRef,
+                    'status' => WalletFundingRequest::STATUS_SETTLED,
+                    'idempotency_key' => $trimmedKey,
+                    'processed_at' => now(),
+                ]);
+            }
+
             return [
-                'wallet' => $lockedWallet,
+                'wallet' => $lockedUserWallet,
                 'ledger_entry' => $entry,
+                'funding_request' => $fundingRequest,
+                'pending_approval' => false,
+                'fee_cents' => $feeCents,
+                'net_amount_cents' => $netAmountCents,
                 'idempotent_replay' => false,
             ];
         });
     }
 
     /**
-     * Withdraw integer cents from a user's wallet via SEPA Instant with strict idempotency,
-     * pessimistic row locking, and post-lock sufficiency check.
+     * Withdraw integer cents from a user's wallet with optional PaymentRail fee calculation,
+     * pessimistic row locking, post-lock sufficiency check, and manual Admin approval support.
      *
-     * @return array{wallet: Wallet, ledger_entry: LedgerEntry, idempotent_replay: bool}
+     * @return array{
+     *     wallet: Wallet,
+     *     ledger_entry: LedgerEntry|null,
+     *     funding_request?: WalletFundingRequest|null,
+     *     pending_approval?: bool,
+     *     fee_cents?: int,
+     *     net_amount_cents?: int,
+     *     idempotent_replay: bool
+     * }
      */
     public function withdraw(
         User $user,
         int $amountCents,
         string $idempotencyKey,
         string $iban = 'FR76 3000 6000 0112 3456 7890 189',
-        string $description = 'Retrait bancaire SEPA Instant depuis portefeuille VALKYR // ARENA'
+        string $description = 'Retrait bancaire SEPA Instant depuis portefeuille VALKYR // ARENA',
+        ?int $paymentRailId = null,
+        ?int $userPaymentMethodId = null
     ): array {
+        $this->assertWalletNotFrozen($user);
+
         $trimmedKey = trim($idempotencyKey);
         if ($trimmedKey === '') {
             throw new InvalidFinancialOperationException('La clé d\'idempotence est obligatoire pour le retrait.');
@@ -173,21 +516,89 @@ final class EscrowLedgerService
             throw new InvalidFinancialOperationException('Le montant du retrait en centimes doit être un entier compris entre 100 (1,00 €) et 50 000 000 centimes.');
         }
 
-        $initialWallet = $this->getOrCreateWallet($user);
+        $rail = null;
+        $feeCents = 0;
 
-        return DB::transaction(function () use ($user, $initialWallet, $amountCents, $trimmedKey, $iban, $description): array {
+        if ($paymentRailId !== null) {
+            $rail = PaymentRail::find($paymentRailId);
+            if ($rail === null || ! $rail->is_active || ! $rail->supports_withdrawal) {
+                throw new InvalidFinancialOperationException('Cette méthode de retrait est inactive ou non supportée.');
+            }
+
+            if ($amountCents < (int) $rail->min_amount_cents || $amountCents > (int) $rail->max_amount_cents) {
+                throw new InvalidFinancialOperationException(
+                    sprintf(
+                        'Le montant pour le rail « %s » doit être compris entre %s et %s.',
+                        $rail->name,
+                        Wallet::formatCents((int) $rail->min_amount_cents),
+                        Wallet::formatCents((int) $rail->max_amount_cents)
+                    )
+                );
+            }
+
+            $feeCents = $rail->calculateWithdrawalFeeCents($amountCents, (bool) ($user->getAttributes()['is_prime'] ?? false));
+            if ($feeCents >= $amountCents) {
+                throw new InvalidFinancialOperationException('Le montant brut du retrait doit être strictement supérieur aux frais de retrait.');
+            }
+        }
+
+        $netAmountCents = $amountCents - $feeCents;
+        $initialWallet = $this->getOrCreateWallet($user);
+        $systemWallets = $this->ensureSystemWallets();
+        $treasuryWallet = $systemWallets['treasury'];
+
+        return DB::transaction(function () use (
+            $user,
+            $initialWallet,
+            $treasuryWallet,
+            $amountCents,
+            $feeCents,
+            $netAmountCents,
+            $trimmedKey,
+            $iban,
+            $description,
+            $rail,
+            $userPaymentMethodId
+        ): array {
+            $existingRequest = WalletFundingRequest::where('idempotency_key', $trimmedKey)->first();
+            if ($existingRequest !== null) {
+                if (
+                    (int) $existingRequest->wallet_id === (int) $initialWallet->id
+                    && $existingRequest->direction === WalletFundingRequest::DIRECTION_WITHDRAWAL
+                    && (int) $existingRequest->gross_amount_cents === $amountCents
+                ) {
+                    $entry = LedgerEntry::where('idempotency_key', $trimmedKey)->first();
+
+                    return [
+                        'wallet' => Wallet::whereKey($initialWallet->id)->firstOrFail(),
+                        'ledger_entry' => $entry,
+                        'funding_request' => $existingRequest,
+                        'pending_approval' => $existingRequest->status === WalletFundingRequest::STATUS_PENDING_ADMIN,
+                        'fee_cents' => (int) $existingRequest->fee_cents,
+                        'net_amount_cents' => (int) $existingRequest->net_amount_cents,
+                        'idempotent_replay' => true,
+                    ];
+                }
+
+                throw new IdempotencyConflictException('Cette clé d\'idempotence a déjà été utilisée pour une demande différente.');
+            }
+
             $existingEntry = LedgerEntry::where('idempotency_key', $trimmedKey)->first();
             if ($existingEntry !== null) {
                 if (
                     (int) $existingEntry->wallet_id === (int) $initialWallet->id
                     && $existingEntry->entry_type === LedgerEntry::TYPE_WITHDRAWAL
-                    && (int) $existingEntry->debit_cents === $amountCents
+                    && (int) $existingEntry->debit_cents === $netAmountCents
                 ) {
                     $freshWallet = Wallet::whereKey($initialWallet->id)->firstOrFail();
 
                     return [
                         'wallet' => $freshWallet,
                         'ledger_entry' => $existingEntry,
+                        'funding_request' => null,
+                        'pending_approval' => false,
+                        'fee_cents' => $feeCents,
+                        'net_amount_cents' => $netAmountCents,
                         'idempotent_replay' => true,
                     ];
                 }
@@ -195,46 +606,739 @@ final class EscrowLedgerService
                 throw new IdempotencyConflictException('Cette clé d\'idempotence a déjà été utilisée pour une transaction différente.');
             }
 
-            $lockedWallet = Wallet::whereKey($initialWallet->id)->lockForUpdate()->firstOrFail();
+            // Lock wallets in deterministic ASC order
+            $walletIds = array_values(array_unique([(int) $initialWallet->id, (int) $treasuryWallet->id]));
+            sort($walletIds);
 
-            // Strictly AFTER acquiring pessimistic lock: verify available balance_cents >= amountCents
-            if ((int) $lockedWallet->balance_cents < $amountCents) {
+            $lockedWallets = Wallet::whereIn('id', $walletIds)
+                ->orderBy('id', 'asc')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+
+            /** @var Wallet $lockedUserWallet */
+            $lockedUserWallet = $lockedWallets->get((int) $initialWallet->id);
+            /** @var Wallet $lockedTreasuryWallet */
+            $lockedTreasuryWallet = $lockedWallets->get((int) $treasuryWallet->id);
+
+            // Strictly AFTER acquiring pessimistic lock: verify available balance_cents >= gross amountCents
+            if ((int) $lockedUserWallet->balance_cents < $amountCents) {
                 throw new InsufficientFundsException(
                     sprintf(
-                        'Solde disponible insuffisant (%s) pour exécuter le retrait SEPA de %s.',
-                        Wallet::formatCents((int) $lockedWallet->balance_cents),
+                        'Solde disponible insuffisant (%s) pour exécuter le retrait de %s.',
+                        Wallet::formatCents((int) $lockedUserWallet->balance_cents),
                         Wallet::formatCents($amountCents)
                     )
                 );
             }
 
-            $balanceBefore = (int) $lockedWallet->balance_cents;
-            $balanceAfter = $balanceBefore - $amountCents;
+            // If rail requires manual Admin approval, create PENDING_ADMIN funding request
+            if ($rail !== null && $rail->requires_admin_approval) {
+                $fundingRequest = WalletFundingRequest::create([
+                    'user_id' => $user->id,
+                    'wallet_id' => $lockedUserWallet->id,
+                    'payment_rail_id' => $rail->id,
+                    'user_payment_method_id' => $userPaymentMethodId,
+                    'direction' => WalletFundingRequest::DIRECTION_WITHDRAWAL,
+                    'gross_amount_cents' => $amountCents,
+                    'fee_cents' => $feeCents,
+                    'net_amount_cents' => $netAmountCents,
+                    'reference_code' => $iban,
+                    'status' => WalletFundingRequest::STATUS_PENDING_ADMIN,
+                    'idempotency_key' => $trimmedKey,
+                ]);
 
-            $lockedWallet->balance_cents = $balanceAfter;
-            $lockedWallet->save();
+                return [
+                    'wallet' => $lockedUserWallet,
+                    'ledger_entry' => null,
+                    'funding_request' => $fundingRequest,
+                    'pending_approval' => true,
+                    'fee_cents' => $feeCents,
+                    'net_amount_cents' => $netAmountCents,
+                    'idempotent_replay' => false,
+                ];
+            }
+
+            // 1. If withdrawal fee > 0, transfer fee from user wallet to Platform Treasury first
+            if ($feeCents > 0 && (int) $lockedUserWallet->id !== (int) $lockedTreasuryWallet->id) {
+                $feeBefore = (int) $lockedUserWallet->balance_cents;
+                $feeAfter = $feeBefore - $feeCents;
+                $lockedUserWallet->balance_cents = $feeAfter;
+                $lockedUserWallet->save();
+
+                LedgerEntry::create([
+                    'wallet_id' => $lockedUserWallet->id,
+                    'tournament_id' => null,
+                    'actor_id' => $user->id,
+                    'entry_type' => LedgerEntry::TYPE_WITHDRAWAL_FEE_DEBIT,
+                    'debit_cents' => $feeCents,
+                    'credit_cents' => 0,
+                    'balance_before_cents' => $feeBefore,
+                    'balance_after_cents' => $feeAfter,
+                    'idempotency_key' => "{$trimmedKey}:fee_debit",
+                    'description' => 'Frais de traitement retrait — '.($rail?->name ?? 'Passerelle'),
+                    'metadata' => [
+                        'rail_code' => $rail?->code,
+                        'gross_amount_cents' => $amountCents,
+                    ],
+                ]);
+
+                $treasuryBefore = (int) $lockedTreasuryWallet->balance_cents;
+                $treasuryAfter = $treasuryBefore + $feeCents;
+                $lockedTreasuryWallet->balance_cents = $treasuryAfter;
+                $lockedTreasuryWallet->save();
+
+                LedgerEntry::create([
+                    'wallet_id' => $lockedTreasuryWallet->id,
+                    'tournament_id' => null,
+                    'actor_id' => $user->id,
+                    'entry_type' => LedgerEntry::TYPE_PLATFORM_PAYMENT_FEE_CREDIT,
+                    'debit_cents' => 0,
+                    'credit_cents' => $feeCents,
+                    'balance_before_cents' => $treasuryBefore,
+                    'balance_after_cents' => $treasuryAfter,
+                    'idempotency_key' => "{$trimmedKey}:fee_credit",
+                    'description' => "Commission passerelle retrait ({$user->gamertag}) — ".($rail?->name ?? 'Passerelle'),
+                    'metadata' => [
+                        'rail_code' => $rail?->code,
+                        'player_gamertag' => $user->gamertag,
+                    ],
+                ]);
+            }
+
+            // 2. Debit net withdrawal amount (WITHDRAWAL)
+            $balanceBefore = (int) $lockedUserWallet->balance_cents;
+            $balanceAfter = $balanceBefore - $netAmountCents;
+
+            $lockedUserWallet->balance_cents = $balanceAfter;
+            $lockedUserWallet->save();
 
             $entry = LedgerEntry::create([
-                'wallet_id' => $lockedWallet->id,
+                'wallet_id' => $lockedUserWallet->id,
                 'tournament_id' => null,
                 'actor_id' => $user->id,
                 'entry_type' => LedgerEntry::TYPE_WITHDRAWAL,
-                'debit_cents' => $amountCents,
+                'debit_cents' => $netAmountCents,
                 'credit_cents' => 0,
                 'balance_before_cents' => $balanceBefore,
                 'balance_after_cents' => $balanceAfter,
                 'idempotency_key' => $trimmedKey,
-                'description' => $description,
+                'description' => $rail !== null ? "{$description} ({$rail->name})" : $description,
                 'metadata' => [
                     'iban' => $iban,
-                    'currency' => $lockedWallet->currency,
+                    'currency' => $lockedUserWallet->currency,
                     'gamertag' => $user->gamertag,
+                    'rail_code' => $rail?->code ?? 'SEPA_INSTANT',
+                    'gross_amount_cents' => $amountCents,
+                    'fee_cents' => $feeCents,
+                    'net_amount_cents' => $netAmountCents,
                 ],
             ]);
 
+            $fundingRequest = null;
+            if ($rail !== null) {
+                $fundingRequest = WalletFundingRequest::create([
+                    'user_id' => $user->id,
+                    'wallet_id' => $lockedUserWallet->id,
+                    'payment_rail_id' => $rail->id,
+                    'user_payment_method_id' => $userPaymentMethodId,
+                    'direction' => WalletFundingRequest::DIRECTION_WITHDRAWAL,
+                    'gross_amount_cents' => $amountCents,
+                    'fee_cents' => $feeCents,
+                    'net_amount_cents' => $netAmountCents,
+                    'reference_code' => $iban,
+                    'status' => WalletFundingRequest::STATUS_SETTLED,
+                    'idempotency_key' => $trimmedKey,
+                    'processed_at' => now(),
+                ]);
+            }
+
             return [
-                'wallet' => $lockedWallet,
+                'wallet' => $lockedUserWallet,
                 'ledger_entry' => $entry,
+                'funding_request' => $fundingRequest,
+                'pending_approval' => false,
+                'fee_cents' => $feeCents,
+                'net_amount_cents' => $netAmountCents,
+                'idempotent_replay' => false,
+            ];
+        });
+    }
+
+    /**
+     * Approve and settle a pending manual deposit or withdrawal request from the Admin Back-Office (/admin).
+     *
+     * @return array{funding_request: WalletFundingRequest, wallet: Wallet, ledger_entry: LedgerEntry}
+     */
+    public function approveFundingRequest(
+        User $admin,
+        WalletFundingRequest $fundingRequest,
+        ?string $adminNotes = null
+    ): array {
+        $systemWallets = $this->ensureSystemWallets();
+        $treasuryWallet = $systemWallets['treasury'];
+
+        return DB::transaction(function () use ($admin, $fundingRequest, $adminNotes, $treasuryWallet): array {
+            /** @var WalletFundingRequest $lockedRequest */
+            $lockedRequest = WalletFundingRequest::with(['user', 'paymentRail'])
+                ->whereKey($fundingRequest->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($lockedRequest->status === WalletFundingRequest::STATUS_SETTLED) {
+                $existingEntry = LedgerEntry::where('idempotency_key', "{$lockedRequest->idempotency_key}:settled")->firstOrFail();
+
+                return [
+                    'funding_request' => $lockedRequest,
+                    'wallet' => Wallet::whereKey($lockedRequest->wallet_id)->firstOrFail(),
+                    'ledger_entry' => $existingEntry,
+                    'idempotent_replay' => true,
+                ];
+            }
+
+            if ($lockedRequest->status !== WalletFundingRequest::STATUS_PENDING_ADMIN) {
+                throw new TournamentStateConflictException('Cette demande a déjà été traitée ou rejetée.');
+            }
+
+            $walletIds = array_values(array_unique([(int) $lockedRequest->wallet_id, (int) $treasuryWallet->id]));
+            sort($walletIds);
+
+            $lockedWallets = Wallet::whereIn('id', $walletIds)
+                ->orderBy('id', 'asc')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+
+            /** @var Wallet $lockedUserWallet */
+            $lockedUserWallet = $lockedWallets->get((int) $lockedRequest->wallet_id);
+            /** @var Wallet $lockedTreasuryWallet */
+            $lockedTreasuryWallet = $lockedWallets->get((int) $treasuryWallet->id);
+
+            $grossCents = (int) $lockedRequest->gross_amount_cents;
+            $feeCents = (int) $lockedRequest->fee_cents;
+            $netCents = (int) $lockedRequest->net_amount_cents;
+            $railName = $lockedRequest->paymentRail?->name ?? 'Validation Manuelle Admin';
+            $baseKey = "{$lockedRequest->idempotency_key}:settled";
+
+            if ($lockedRequest->direction === WalletFundingRequest::DIRECTION_DEPOSIT) {
+                $before = (int) $lockedUserWallet->balance_cents;
+                $afterGross = $before + $grossCents;
+                $lockedUserWallet->balance_cents = $afterGross;
+                $lockedUserWallet->save();
+
+                $entry = LedgerEntry::create([
+                    'wallet_id' => $lockedUserWallet->id,
+                    'tournament_id' => null,
+                    'actor_id' => $admin->id,
+                    'entry_type' => LedgerEntry::TYPE_DEPOSIT,
+                    'debit_cents' => 0,
+                    'credit_cents' => $grossCents,
+                    'balance_before_cents' => $before,
+                    'balance_after_cents' => $afterGross,
+                    'idempotency_key' => $baseKey,
+                    'description' => "Dépôt validé par Admin — {$railName} ({$lockedRequest->reference_code})",
+                    'metadata' => [
+                        'funding_request_id' => $lockedRequest->id,
+                        'approved_by_admin' => $admin->gamertag,
+                        'reference_code' => $lockedRequest->reference_code,
+                    ],
+                ]);
+
+                if ($feeCents > 0 && (int) $lockedUserWallet->id !== (int) $lockedTreasuryWallet->id) {
+                    $feeBefore = (int) $lockedUserWallet->balance_cents;
+                    $feeAfter = $feeBefore - $feeCents;
+                    $lockedUserWallet->balance_cents = $feeAfter;
+                    $lockedUserWallet->save();
+
+                    LedgerEntry::create([
+                        'wallet_id' => $lockedUserWallet->id,
+                        'tournament_id' => null,
+                        'actor_id' => $admin->id,
+                        'entry_type' => LedgerEntry::TYPE_DEPOSIT_FEE_DEBIT,
+                        'debit_cents' => $feeCents,
+                        'credit_cents' => 0,
+                        'balance_before_cents' => $feeBefore,
+                        'balance_after_cents' => $feeAfter,
+                        'idempotency_key' => "{$baseKey}:fee_debit",
+                        'description' => "Frais dépôt manuel — {$railName}",
+                        'metadata' => ['funding_request_id' => $lockedRequest->id],
+                    ]);
+
+                    $treasuryBefore = (int) $lockedTreasuryWallet->balance_cents;
+                    $treasuryAfter = $treasuryBefore + $feeCents;
+                    $lockedTreasuryWallet->balance_cents = $treasuryAfter;
+                    $lockedTreasuryWallet->save();
+
+                    LedgerEntry::create([
+                        'wallet_id' => $lockedTreasuryWallet->id,
+                        'tournament_id' => null,
+                        'actor_id' => $admin->id,
+                        'entry_type' => LedgerEntry::TYPE_PLATFORM_PAYMENT_FEE_CREDIT,
+                        'debit_cents' => 0,
+                        'credit_cents' => $feeCents,
+                        'balance_before_cents' => $treasuryBefore,
+                        'balance_after_cents' => $treasuryAfter,
+                        'idempotency_key' => "{$baseKey}:fee_credit",
+                        'description' => "Commission dépôt manuel — {$railName}",
+                        'metadata' => ['funding_request_id' => $lockedRequest->id],
+                    ]);
+                }
+            } else {
+                if ((int) $lockedUserWallet->balance_cents < $grossCents) {
+                    throw new InsufficientFundsException(
+                        'Solde disponible de l\'opérateur insuffisant pour approuver ce retrait.'
+                    );
+                }
+
+                if ($feeCents > 0 && (int) $lockedUserWallet->id !== (int) $lockedTreasuryWallet->id) {
+                    $feeBefore = (int) $lockedUserWallet->balance_cents;
+                    $feeAfter = $feeBefore - $feeCents;
+                    $lockedUserWallet->balance_cents = $feeAfter;
+                    $lockedUserWallet->save();
+
+                    LedgerEntry::create([
+                        'wallet_id' => $lockedUserWallet->id,
+                        'tournament_id' => null,
+                        'actor_id' => $admin->id,
+                        'entry_type' => LedgerEntry::TYPE_WITHDRAWAL_FEE_DEBIT,
+                        'debit_cents' => $feeCents,
+                        'credit_cents' => 0,
+                        'balance_before_cents' => $feeBefore,
+                        'balance_after_cents' => $feeAfter,
+                        'idempotency_key' => "{$baseKey}:fee_debit",
+                        'description' => "Frais retrait manuel — {$railName}",
+                        'metadata' => ['funding_request_id' => $lockedRequest->id],
+                    ]);
+
+                    $treasuryBefore = (int) $lockedTreasuryWallet->balance_cents;
+                    $treasuryAfter = $treasuryBefore + $feeCents;
+                    $lockedTreasuryWallet->balance_cents = $treasuryAfter;
+                    $lockedTreasuryWallet->save();
+
+                    LedgerEntry::create([
+                        'wallet_id' => $lockedTreasuryWallet->id,
+                        'tournament_id' => null,
+                        'actor_id' => $admin->id,
+                        'entry_type' => LedgerEntry::TYPE_PLATFORM_PAYMENT_FEE_CREDIT,
+                        'debit_cents' => 0,
+                        'credit_cents' => $feeCents,
+                        'balance_before_cents' => $treasuryBefore,
+                        'balance_after_cents' => $treasuryAfter,
+                        'idempotency_key' => "{$baseKey}:fee_credit",
+                        'description' => "Commission retrait manuel — {$railName}",
+                        'metadata' => ['funding_request_id' => $lockedRequest->id],
+                    ]);
+                }
+
+                $before = (int) $lockedUserWallet->balance_cents;
+                $after = $before - $netCents;
+                $lockedUserWallet->balance_cents = $after;
+                $lockedUserWallet->save();
+
+                $entry = LedgerEntry::create([
+                    'wallet_id' => $lockedUserWallet->id,
+                    'tournament_id' => null,
+                    'actor_id' => $admin->id,
+                    'entry_type' => LedgerEntry::TYPE_WITHDRAWAL,
+                    'debit_cents' => $netCents,
+                    'credit_cents' => 0,
+                    'balance_before_cents' => $before,
+                    'balance_after_cents' => $after,
+                    'idempotency_key' => $baseKey,
+                    'description' => "Retrait validé par Admin — {$railName} ({$lockedRequest->reference_code})",
+                    'metadata' => [
+                        'funding_request_id' => $lockedRequest->id,
+                        'approved_by_admin' => $admin->gamertag,
+                        'reference_code' => $lockedRequest->reference_code,
+                    ],
+                ]);
+            }
+
+            $lockedRequest->status = WalletFundingRequest::STATUS_SETTLED;
+            $lockedRequest->processed_by_admin_id = $admin->id;
+            $lockedRequest->admin_notes = $adminNotes ?? 'Approuvé et réglé sur le Grand Livre par le Commandement Admin.';
+            $lockedRequest->processed_at = now();
+            $lockedRequest->save();
+
+            return [
+                'funding_request' => $lockedRequest->fresh(['user', 'paymentRail', 'processedByAdmin']),
+                'wallet' => $lockedUserWallet,
+                'ledger_entry' => $entry,
+                'idempotent_replay' => false,
+            ];
+        });
+    }
+
+    /**
+     * Reject a pending manual deposit or withdrawal request.
+     */
+    public function rejectFundingRequest(
+        User $admin,
+        WalletFundingRequest $fundingRequest,
+        ?string $adminNotes = null
+    ): WalletFundingRequest {
+        return DB::transaction(function () use ($admin, $fundingRequest, $adminNotes): WalletFundingRequest {
+            /** @var WalletFundingRequest $lockedRequest */
+            $lockedRequest = WalletFundingRequest::whereKey($fundingRequest->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($lockedRequest->status !== WalletFundingRequest::STATUS_PENDING_ADMIN) {
+                throw new TournamentStateConflictException('Seule une demande en attente peut être rejetée.');
+            }
+
+            $lockedRequest->status = WalletFundingRequest::STATUS_REJECTED;
+            $lockedRequest->processed_by_admin_id = $admin->id;
+            $lockedRequest->admin_notes = $adminNotes ?? 'Rejeté par le Commandement Admin (référence non rapprochée).';
+            $lockedRequest->processed_at = now();
+            $lockedRequest->save();
+
+            return $lockedRequest->fresh(['user', 'paymentRail', 'processedByAdmin']);
+        });
+    }
+
+    /**
+     * Subscribe an operator to ★ VALKYR PRIME (19,00 € / 1900 cents paid from Wallet to Platform Treasury).
+     *
+     * @return array{user: User, wallet: Wallet, ledger_entry: LedgerEntry, idempotent_replay: bool}
+     */
+    public function subscribePrime(User $user, string $idempotencyKey): array
+    {
+        $this->assertWalletNotFrozen($user);
+
+        $trimmedKey = trim($idempotencyKey);
+        if ($trimmedKey === '') {
+            throw new InvalidFinancialOperationException('La clé d\'idempotence est obligatoire pour souscrire à VALKYR PRIME.');
+        }
+
+        $priceCents = self::PRIME_SUBSCRIPTION_PRICE_CENTS;
+        $userWallet = $this->getOrCreateWallet($user);
+        $systemWallets = $this->ensureSystemWallets();
+        $treasuryWallet = $systemWallets['treasury'];
+
+        return DB::transaction(function () use ($user, $userWallet, $treasuryWallet, $priceCents, $trimmedKey): array {
+            $existingEntry = LedgerEntry::where('idempotency_key', "{$trimmedKey}:prime_debit")->first();
+            if ($existingEntry !== null) {
+                if ((int) $existingEntry->wallet_id === (int) $userWallet->id) {
+                    return [
+                        'user' => $user->fresh(),
+                        'wallet' => Wallet::findOrFail($userWallet->id),
+                        'ledger_entry' => $existingEntry,
+                        'idempotent_replay' => true,
+                    ];
+                }
+
+                throw new IdempotencyConflictException('Clé d\'idempotence déjà utilisée.');
+            }
+
+            $walletIds = array_values(array_unique([(int) $userWallet->id, (int) $treasuryWallet->id]));
+            sort($walletIds);
+
+            $lockedWallets = Wallet::whereIn('id', $walletIds)
+                ->orderBy('id', 'asc')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+
+            /** @var Wallet $lockedUserWallet */
+            $lockedUserWallet = $lockedWallets->get((int) $userWallet->id);
+            /** @var Wallet $lockedTreasuryWallet */
+            $lockedTreasuryWallet = $lockedWallets->get((int) $treasuryWallet->id);
+
+            if ((int) $lockedUserWallet->balance_cents < $priceCents) {
+                throw new InsufficientFundsException(
+                    sprintf(
+                        'Solde Wallet insuffisant (%s) pour activer le Pass ★ VALKYR PRIME (%s). Créditez d\'abord votre Wallet.',
+                        Wallet::formatCents((int) $lockedUserWallet->balance_cents),
+                        Wallet::formatCents($priceCents)
+                    )
+                );
+            }
+
+            $uBefore = (int) $lockedUserWallet->balance_cents;
+            $uAfter = $uBefore - $priceCents;
+            $lockedUserWallet->balance_cents = $uAfter;
+            $lockedUserWallet->save();
+
+            $debitEntry = LedgerEntry::create([
+                'wallet_id' => $lockedUserWallet->id,
+                'tournament_id' => null,
+                'actor_id' => $user->id,
+                'entry_type' => LedgerEntry::TYPE_PRIME_SUBSCRIPTION_DEBIT,
+                'debit_cents' => $priceCents,
+                'credit_cents' => 0,
+                'balance_before_cents' => $uBefore,
+                'balance_after_cents' => $uAfter,
+                'idempotency_key' => "{$trimmedKey}:prime_debit",
+                'description' => 'Activation Pass Membre ★ VALKYR PRIME (30 Jours — 0 % Frais Rails)',
+                'metadata' => ['gamertag' => $user->gamertag],
+            ]);
+
+            if ((int) $lockedTreasuryWallet->id === (int) $lockedUserWallet->id) {
+                $lockedTreasuryWallet = $lockedUserWallet;
+            }
+
+            $tBefore = (int) $lockedTreasuryWallet->balance_cents;
+            $tAfter = $tBefore + $priceCents;
+            $lockedTreasuryWallet->balance_cents = $tAfter;
+            $lockedTreasuryWallet->save();
+
+            LedgerEntry::create([
+                'wallet_id' => $lockedTreasuryWallet->id,
+                'tournament_id' => null,
+                'actor_id' => $user->id,
+                'entry_type' => LedgerEntry::TYPE_PRIME_SUBSCRIPTION_CREDIT,
+                'debit_cents' => 0,
+                'credit_cents' => $priceCents,
+                'balance_before_cents' => $tBefore,
+                'balance_after_cents' => $tAfter,
+                'idempotency_key' => "{$trimmedKey}:prime_credit",
+                'description' => "Revenu Abonnement ★ VALKYR PRIME ({$user->gamertag})",
+                'metadata' => ['user_id' => $user->id, 'gamertag' => $user->gamertag],
+            ]);
+
+            $user->is_prime = true;
+            $user->prime_expires_at = now()->addDays(30);
+            $user->elo_rating = (int) $user->elo_rating + 50;
+            $user->save();
+
+            return [
+                'user' => $user->fresh(),
+                'wallet' => $lockedUserWallet,
+                'ledger_entry' => $debitEntry,
+                'idempotent_replay' => false,
+            ];
+        });
+    }
+
+    /**
+     * Boost a tournament to ★ FEATURED status (25,00 € / 2500 cents paid from Organizer/Admin Wallet to Platform Treasury).
+     *
+     * @return array{tournament: Tournament, wallet: Wallet, ledger_entry: LedgerEntry, idempotent_replay: bool}
+     */
+    public function boostTournament(User $actor, Tournament $tournament, string $idempotencyKey): array
+    {
+        $this->assertWalletNotFrozen($actor);
+
+        $trimmedKey = trim($idempotencyKey);
+        if ($trimmedKey === '') {
+            throw new InvalidFinancialOperationException('Clé d\'idempotence obligatoire pour le boost d\'arène.');
+        }
+
+        $priceCents = self::ARENA_BOOST_PRICE_CENTS;
+        $actorWallet = $this->getOrCreateWallet($actor);
+        $systemWallets = $this->ensureSystemWallets();
+        $treasuryWallet = $systemWallets['treasury'];
+
+        return DB::transaction(function () use ($actor, $tournament, $actorWallet, $treasuryWallet, $priceCents, $trimmedKey): array {
+            $existingEntry = LedgerEntry::where('idempotency_key', "{$trimmedKey}:boost_debit")->first();
+            if ($existingEntry !== null) {
+                return [
+                    'tournament' => Tournament::with(['organizer', 'registrations.user'])->findOrFail($tournament->id),
+                    'wallet' => Wallet::findOrFail($actorWallet->id),
+                    'ledger_entry' => $existingEntry,
+                    'idempotent_replay' => true,
+                ];
+            }
+
+            $lockedTournament = Tournament::whereKey($tournament->id)->lockForUpdate()->firstOrFail();
+
+            $walletIds = array_values(array_unique([(int) $actorWallet->id, (int) $treasuryWallet->id]));
+            sort($walletIds);
+
+            $lockedWallets = Wallet::whereIn('id', $walletIds)
+                ->orderBy('id', 'asc')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+
+            /** @var Wallet $lockedActorWallet */
+            $lockedActorWallet = $lockedWallets->get((int) $actorWallet->id);
+            /** @var Wallet $lockedTreasuryWallet */
+            $lockedTreasuryWallet = $lockedWallets->get((int) $treasuryWallet->id);
+
+            if ((int) $lockedActorWallet->balance_cents < $priceCents) {
+                throw new InsufficientFundsException(
+                    sprintf(
+                        'Solde Wallet insuffisant (%s) pour activer le Boost ★ FEATURED (%s).',
+                        Wallet::formatCents((int) $lockedActorWallet->balance_cents),
+                        Wallet::formatCents($priceCents)
+                    )
+                );
+            }
+
+            $aBefore = (int) $lockedActorWallet->balance_cents;
+            $aAfter = $aBefore - $priceCents;
+            $lockedActorWallet->balance_cents = $aAfter;
+            $lockedActorWallet->save();
+
+            $debitEntry = LedgerEntry::create([
+                'wallet_id' => $lockedActorWallet->id,
+                'tournament_id' => $lockedTournament->id,
+                'actor_id' => $actor->id,
+                'entry_type' => LedgerEntry::TYPE_ARENA_BOOST_DEBIT,
+                'debit_cents' => $priceCents,
+                'credit_cents' => 0,
+                'balance_before_cents' => $aBefore,
+                'balance_after_cents' => $aAfter,
+                'idempotency_key' => "{$trimmedKey}:boost_debit",
+                'description' => "Boost Visibilité ★ FEATURED — {$lockedTournament->title}",
+                'metadata' => ['tournament_slug' => $lockedTournament->slug],
+            ]);
+
+            if ((int) $lockedTreasuryWallet->id === (int) $lockedActorWallet->id) {
+                $lockedTreasuryWallet = $lockedActorWallet;
+            }
+
+            $tBefore = (int) $lockedTreasuryWallet->balance_cents;
+            $tAfter = $tBefore + $priceCents;
+            $lockedTreasuryWallet->balance_cents = $tAfter;
+            $lockedTreasuryWallet->save();
+
+            LedgerEntry::create([
+                'wallet_id' => $lockedTreasuryWallet->id,
+                'tournament_id' => $lockedTournament->id,
+                'actor_id' => $actor->id,
+                'entry_type' => LedgerEntry::TYPE_ARENA_BOOST_CREDIT,
+                'debit_cents' => 0,
+                'credit_cents' => $priceCents,
+                'balance_before_cents' => $tBefore,
+                'balance_after_cents' => $tAfter,
+                'idempotency_key' => "{$trimmedKey}:boost_credit",
+                'description' => "Revenu Boost Arène ★ FEATURED ({$actor->gamertag}) — {$lockedTournament->title}",
+                'metadata' => ['tournament_id' => $lockedTournament->id],
+            ]);
+
+            $lockedTournament->is_featured = true;
+            $lockedTournament->boost_paid_cents = (int) ($lockedTournament->getAttributes()['boost_paid_cents'] ?? 0) + $priceCents;
+            $lockedTournament->save();
+
+            return [
+                'tournament' => $lockedTournament->fresh(['organizer', 'registrations.user']),
+                'wallet' => $lockedActorWallet,
+                'ledger_entry' => $debitEntry,
+                'idempotent_replay' => false,
+            ];
+        });
+    }
+
+    /**
+     * Inject sponsored prize pool funds from an Organizer/Admin Wallet into the Tournament Escrow Vault.
+     *
+     * @return array{tournament: Tournament, wallet: Wallet, ledger_entry: LedgerEntry, idempotent_replay: bool}
+     */
+    public function sponsorTournament(
+        User $actor,
+        Tournament $tournament,
+        int $amountCents,
+        string $idempotencyKey
+    ): array {
+        $this->assertWalletNotFrozen($actor);
+
+        $trimmedKey = trim($idempotencyKey);
+        if ($trimmedKey === '') {
+            throw new InvalidFinancialOperationException('Clé d\'idempotence obligatoire pour le sponsoring.');
+        }
+
+        if ($amountCents < 500 || $amountCents > 50_000_000) {
+            throw new InvalidFinancialOperationException('La dotation sponsorisée doit être comprise entre 5,00 € (500 centimes) et 500 000,00 €.');
+        }
+
+        $actorWallet = $this->getOrCreateWallet($actor);
+        $systemWallets = $this->ensureSystemWallets();
+        $escrowWallet = $systemWallets['escrow'];
+
+        return DB::transaction(function () use ($actor, $tournament, $actorWallet, $escrowWallet, $amountCents, $trimmedKey): array {
+            $existingEntry = LedgerEntry::where('idempotency_key', "{$trimmedKey}:sponsor_debit")->first();
+            if ($existingEntry !== null) {
+                return [
+                    'tournament' => Tournament::with(['organizer', 'registrations.user'])->findOrFail($tournament->id),
+                    'wallet' => Wallet::findOrFail($actorWallet->id),
+                    'ledger_entry' => $existingEntry,
+                    'idempotent_replay' => true,
+                ];
+            }
+
+            $lockedTournament = Tournament::whereKey($tournament->id)->lockForUpdate()->firstOrFail();
+
+            if (in_array($lockedTournament->status, [Tournament::STATUS_SETTLED, Tournament::STATUS_CANCELLED], true)) {
+                throw new TournamentStateConflictException('Impossible d\'injecter une dotation dans un tournoi déjà clôturé ou annulé.');
+            }
+
+            $walletIds = array_values(array_unique([(int) $actorWallet->id, (int) $escrowWallet->id]));
+            sort($walletIds);
+
+            $lockedWallets = Wallet::whereIn('id', $walletIds)
+                ->orderBy('id', 'asc')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+
+            /** @var Wallet $lockedActorWallet */
+            $lockedActorWallet = $lockedWallets->get((int) $actorWallet->id);
+            /** @var Wallet $lockedEscrowWallet */
+            $lockedEscrowWallet = $lockedWallets->get((int) $escrowWallet->id);
+
+            if ((int) $lockedActorWallet->balance_cents < $amountCents) {
+                throw new InsufficientFundsException(
+                    sprintf(
+                        'Solde Wallet insuffisant (%s) pour injecter la dotation sponsorisée de %s.',
+                        Wallet::formatCents((int) $lockedActorWallet->balance_cents),
+                        Wallet::formatCents($amountCents)
+                    )
+                );
+            }
+
+            $aBefore = (int) $lockedActorWallet->balance_cents;
+            $aAfter = $aBefore - $amountCents;
+            $lockedActorWallet->balance_cents = $aAfter;
+            $lockedActorWallet->save();
+
+            $debitEntry = LedgerEntry::create([
+                'wallet_id' => $lockedActorWallet->id,
+                'tournament_id' => $lockedTournament->id,
+                'actor_id' => $actor->id,
+                'entry_type' => LedgerEntry::TYPE_SPONSOR_POOL_DEBIT,
+                'debit_cents' => $amountCents,
+                'credit_cents' => 0,
+                'balance_before_cents' => $aBefore,
+                'balance_after_cents' => $aAfter,
+                'idempotency_key' => "{$trimmedKey}:sponsor_debit",
+                'description' => "Dotation Sponsorisée injectée — {$lockedTournament->title}",
+                'metadata' => ['tournament_slug' => $lockedTournament->slug],
+            ]);
+
+            if ((int) $lockedEscrowWallet->id === (int) $lockedActorWallet->id) {
+                $lockedEscrowWallet = $lockedActorWallet;
+            }
+
+            $eBefore = (int) $lockedEscrowWallet->balance_cents;
+            $eAfter = $eBefore + $amountCents;
+            $lockedEscrowWallet->balance_cents = $eAfter;
+            $lockedEscrowWallet->save();
+
+            LedgerEntry::create([
+                'wallet_id' => $lockedEscrowWallet->id,
+                'tournament_id' => $lockedTournament->id,
+                'actor_id' => $actor->id,
+                'entry_type' => LedgerEntry::TYPE_SPONSOR_POOL_CREDIT,
+                'debit_cents' => 0,
+                'credit_cents' => $amountCents,
+                'balance_before_cents' => $eBefore,
+                'balance_after_cents' => $eAfter,
+                'idempotency_key' => "{$trimmedKey}:sponsor_credit",
+                'description' => "Réception Dotation Sponsorisée ({$actor->gamertag}) — {$lockedTournament->title}",
+                'metadata' => ['sponsor_gamertag' => $actor->gamertag],
+            ]);
+
+            $lockedTournament->escrow_pool_cents = (int) $lockedTournament->escrow_pool_cents + $amountCents;
+            $lockedTournament->sponsored_guarantee_cents = (int) $lockedTournament->sponsored_guarantee_cents + $amountCents;
+            $lockedTournament->save();
+
+            return [
+                'tournament' => $lockedTournament->fresh(['organizer', 'registrations.user']),
+                'wallet' => $lockedActorWallet,
+                'ledger_entry' => $debitEntry,
                 'idempotent_replay' => false,
             ];
         });
@@ -252,6 +1356,8 @@ final class EscrowLedgerService
         string $idempotencyKey,
         ?string $loadoutClass = null
     ): array {
+        $this->assertWalletNotFrozen($player);
+
         $trimmedKey = trim($idempotencyKey);
         if ($trimmedKey === '') {
             throw new InvalidFinancialOperationException('La clé d\'idempotence est obligatoire pour l\'inscription au tournoi.');
@@ -362,7 +1468,6 @@ final class EscrowLedgerService
                 ],
             ]);
 
-            // Reload escrow wallet in case player wallet === escrow wallet (defensive guard)
             if ((int) $lockedEscrowWallet->id === (int) $lockedPlayerWallet->id) {
                 $lockedEscrowWallet = $lockedPlayerWallet;
             }
@@ -420,15 +1525,16 @@ final class EscrowLedgerService
 
     /**
      * Atomically settle a tournament:
-     * - Deduct 8% (800 bps) platform rake to Platform Treasury
+     * - Deduct platform rake (default 800 bps = 8%), splitting between Platform Treasury and Organizer RevShare (if organizer_share_bps > 0)
      * - Distribute net pool: 60% (+ integer remainder) to 1st, 30% to 2nd, 10% to 3rd (or 70%/30% if 2 players)
-     * - Verify strict monetary conservation: rake + 1st + 2nd + 3rd === totalPool
+     * - Verify strict monetary conservation: treasury_rake + organizer_rake + 1st + 2nd + 3rd === totalPool
      *
      * @return array{
      *     tournament: Tournament,
      *     breakdown: array{
      *         total_pool_cents: int,
      *         platform_rake_cents: int,
+     *         organizer_rake_cents: int,
      *         net_prize_pool_cents: int,
      *         first_prize_cents: int,
      *         second_prize_cents: int,
@@ -466,7 +1572,6 @@ final class EscrowLedgerService
         ): array {
             $lockedTournament = Tournament::whereKey($tournament->id)->lockForUpdate()->firstOrFail();
 
-            // Idempotent replay check if already settled with the exact same key and winners
             if ($lockedTournament->status === Tournament::STATUS_SETTLED) {
                 if (
                     $lockedTournament->settlement_idempotency_key === $trimmedKey
@@ -481,6 +1586,7 @@ final class EscrowLedgerService
                         'breakdown' => [
                             'total_pool_cents' => (int) $lockedTournament->escrow_pool_cents,
                             'platform_rake_cents' => (int) $lockedTournament->platform_rake_cents,
+                            'organizer_rake_cents' => (int) $lockedTournament->organizer_rake_cents,
                             'net_prize_pool_cents' => (int) $lockedTournament->net_prize_pool_cents,
                             'first_prize_cents' => (int) ($regs->get($firstPlaceUserId)?->prize_won_cents ?? 0),
                             'second_prize_cents' => (int) ($regs->get($secondPlaceUserId)?->prize_won_cents ?? 0),
@@ -535,6 +1641,9 @@ final class EscrowLedgerService
                 throw new InvalidFinancialOperationException('Le pool séquestré de ce tournoi est nul.');
             }
 
+            $organizerUser = User::find($lockedTournament->organizer_id);
+            $organizerWallet = $organizerUser !== null ? $this->getOrCreateWallet($organizerUser) : null;
+
             // Ensure all registered participants have wallets, then lock all wallets in deterministic ASC order
             $participantUserIds = $registrations->keys()->map(fn ($id): int => (int) $id)->all();
             foreach ($participantUserIds as $uid) {
@@ -555,6 +1664,9 @@ final class EscrowLedgerService
                 (int) $escrowWallet->id,
                 (int) $treasuryWallet->id,
             ];
+            if ($organizerWallet !== null) {
+                $allWalletIds[] = (int) $organizerWallet->id;
+            }
             foreach ($participantWallets as $pw) {
                 $allWalletIds[] = (int) $pw->id;
             }
@@ -576,10 +1688,20 @@ final class EscrowLedgerService
                 throw new InsufficientFundsException('Solde du compte séquestre système insuffisant pour couvrir la distribution.');
             }
 
-            // Server-side integer math: 8% (800 bps) platform rake + 60/30/10 net distribution
+            // Server-side integer math: Total Rake (default 800 bps = 8%) + Organizer RevShare + 60/30/10 net distribution
             $rakeBps = (int) ($lockedTournament->rake_bps ?: Tournament::DEFAULT_RAKE_BPS);
-            $rakeCents = intdiv($totalPool * $rakeBps, 10000);
-            $netPoolCents = $totalPool - $rakeCents;
+            $totalRakeCents = intdiv($totalPool * $rakeBps, 10000);
+
+            $orgShareBps = max(0, min($rakeBps, (int) $lockedTournament->organizer_share_bps));
+            if ($orgShareBps > 0 && $organizerUser !== null && $organizerUser->isOrganizer() && $organizerWallet !== null) {
+                $organizerRakeCents = intdiv($totalPool * $orgShareBps, 10000);
+                $treasuryRakeCents = $totalRakeCents - $organizerRakeCents;
+            } else {
+                $organizerRakeCents = 0;
+                $treasuryRakeCents = $totalRakeCents;
+            }
+
+            $netPoolCents = $totalPool - $totalRakeCents;
 
             if ($thirdPlaceUserId !== null) {
                 $secondPrize = intdiv($netPoolCents * 3000, 10000);
@@ -591,7 +1713,7 @@ final class EscrowLedgerService
                 $firstPrize = $netPoolCents - $secondPrize;
             }
 
-            if ($rakeCents + $firstPrize + $secondPrize + $thirdPrize !== $totalPool) {
+            if ($treasuryRakeCents + $organizerRakeCents + $firstPrize + $secondPrize + $thirdPrize !== $totalPool) {
                 throw new DomainException('Violation de l\'invariant de conservation monétaire lors de la clôture.');
             }
 
@@ -614,15 +1736,16 @@ final class EscrowLedgerService
                 'description' => "Libération intégrale du séquestre — {$lockedTournament->title}",
                 'metadata' => [
                     'total_pool_cents' => $totalPool,
-                    'rake_cents' => $rakeCents,
+                    'platform_rake_cents' => $treasuryRakeCents,
+                    'organizer_rake_cents' => $organizerRakeCents,
                     'net_prize_pool_cents' => $netPoolCents,
                 ],
             ]);
 
-            // 2. Credit Platform Treasury with 8% commission
-            if ($rakeCents > 0) {
+            // 2. Credit Platform Treasury with its net commission
+            if ($treasuryRakeCents > 0) {
                 $treasuryBefore = (int) $lockedTreasuryWallet->balance_cents;
-                $treasuryAfter = $treasuryBefore + $rakeCents;
+                $treasuryAfter = $treasuryBefore + $treasuryRakeCents;
                 $lockedTreasuryWallet->balance_cents = $treasuryAfter;
                 $lockedTreasuryWallet->save();
 
@@ -632,14 +1755,44 @@ final class EscrowLedgerService
                     'actor_id' => $actor->id,
                     'entry_type' => LedgerEntry::TYPE_PLATFORM_RAKE_CREDIT,
                     'debit_cents' => 0,
-                    'credit_cents' => $rakeCents,
+                    'credit_cents' => $treasuryRakeCents,
                     'balance_before_cents' => $treasuryBefore,
                     'balance_after_cents' => $treasuryAfter,
                     'idempotency_key' => "{$trimmedKey}:platform_rake",
-                    'description' => "Commission plateforme 8 % (800 bps) — {$lockedTournament->title}",
+                    'description' => "Commission plateforme ({$rakeBps} bps) — {$lockedTournament->title}",
                     'metadata' => [
                         'rake_bps' => $rakeBps,
+                        'organizer_share_bps' => $orgShareBps,
                         'total_pool_cents' => $totalPool,
+                    ],
+                ]);
+            }
+
+            // 2b. Credit Organizer Wallet with Organizer Revenue Share if applicable
+            if ($organizerRakeCents > 0 && $organizerWallet !== null) {
+                /** @var Wallet $lockedOrgWallet */
+                $lockedOrgWallet = $lockedWalletsById->get((int) $organizerWallet->id);
+
+                $orgBefore = (int) $lockedOrgWallet->balance_cents;
+                $orgAfter = $orgBefore + $organizerRakeCents;
+                $lockedOrgWallet->balance_cents = $orgAfter;
+                $lockedOrgWallet->lifetime_won_cents = (int) $lockedOrgWallet->lifetime_won_cents + $organizerRakeCents;
+                $lockedOrgWallet->save();
+
+                LedgerEntry::create([
+                    'wallet_id' => $lockedOrgWallet->id,
+                    'tournament_id' => $lockedTournament->id,
+                    'actor_id' => $actor->id,
+                    'entry_type' => LedgerEntry::TYPE_ORGANIZER_RAKE_SHARE_CREDIT,
+                    'debit_cents' => 0,
+                    'credit_cents' => $organizerRakeCents,
+                    'balance_before_cents' => $orgBefore,
+                    'balance_after_cents' => $orgAfter,
+                    'idempotency_key' => "{$trimmedKey}:organizer_rake_share",
+                    'description' => "Commission Organisateur RevShare ({$orgShareBps} bps) — {$lockedTournament->title}",
+                    'metadata' => [
+                        'organizer_id' => $lockedTournament->organizer_id,
+                        'organizer_share_bps' => $orgShareBps,
                     ],
                 ]);
             }
@@ -725,7 +1878,8 @@ final class EscrowLedgerService
 
             // 6. Finalize tournament record
             $lockedTournament->status = Tournament::STATUS_SETTLED;
-            $lockedTournament->platform_rake_cents = $rakeCents;
+            $lockedTournament->platform_rake_cents = $treasuryRakeCents;
+            $lockedTournament->organizer_rake_cents = $organizerRakeCents;
             $lockedTournament->net_prize_pool_cents = $netPoolCents;
             $lockedTournament->first_place_user_id = $firstPlaceUserId;
             $lockedTournament->second_place_user_id = $secondPlaceUserId;
@@ -738,7 +1892,8 @@ final class EscrowLedgerService
                 'tournament' => $lockedTournament->fresh(['registrations.user', 'organizer', 'firstPlace', 'secondPlace', 'thirdPlace']),
                 'breakdown' => [
                     'total_pool_cents' => $totalPool,
-                    'platform_rake_cents' => $rakeCents,
+                    'platform_rake_cents' => $treasuryRakeCents,
+                    'organizer_rake_cents' => $organizerRakeCents,
                     'net_prize_pool_cents' => $netPoolCents,
                     'first_prize_cents' => $firstPrize,
                     'second_prize_cents' => $secondPrize,
@@ -767,8 +1922,9 @@ final class EscrowLedgerService
 
         $systemWallets = $this->ensureSystemWallets();
         $escrowWallet = $systemWallets['escrow'];
+        $treasuryWallet = $systemWallets['treasury'];
 
-        return DB::transaction(function () use ($actor, $tournament, $trimmedKey, $reason, $escrowWallet): array {
+        return DB::transaction(function () use ($actor, $tournament, $trimmedKey, $reason, $escrowWallet, $treasuryWallet): array {
             $lockedTournament = Tournament::whereKey($tournament->id)->lockForUpdate()->firstOrFail();
 
             if ($lockedTournament->status === Tournament::STATUS_SETTLED) {
@@ -799,7 +1955,7 @@ final class EscrowLedgerService
 
             $participantWallets = Wallet::whereIn('user_id', $participantUserIds)->get()->keyBy('user_id');
 
-            $allWalletIds = [(int) $escrowWallet->id];
+            $allWalletIds = [(int) $escrowWallet->id, (int) $treasuryWallet->id];
             foreach ($participantWallets as $pw) {
                 $allWalletIds[] = (int) $pw->id;
             }
@@ -814,6 +1970,8 @@ final class EscrowLedgerService
 
             /** @var Wallet $lockedEscrowWallet */
             $lockedEscrowWallet = $lockedWalletsById->get((int) $escrowWallet->id);
+            /** @var Wallet $lockedTreasuryWallet */
+            $lockedTreasuryWallet = $lockedWalletsById->get((int) $treasuryWallet->id);
 
             $totalRefundedCents = 0;
             $refundedCount = 0;
@@ -884,6 +2042,46 @@ final class EscrowLedgerService
 
                 $totalRefundedCents += $refundCents;
                 $refundedCount++;
+            }
+
+            // If tournament had extra sponsored pool remaining in escrow, release it back to Platform Treasury
+            $remainingSponsoredInEscrow = max(0, (int) $lockedTournament->escrow_pool_cents - $totalRefundedCents);
+            if ($remainingSponsoredInEscrow > 0 && (int) $lockedEscrowWallet->balance_cents >= $remainingSponsoredInEscrow) {
+                $eBefore = (int) $lockedEscrowWallet->balance_cents;
+                $eAfter = $eBefore - $remainingSponsoredInEscrow;
+                $lockedEscrowWallet->balance_cents = $eAfter;
+                $lockedEscrowWallet->save();
+
+                LedgerEntry::create([
+                    'wallet_id' => $lockedEscrowWallet->id,
+                    'tournament_id' => $lockedTournament->id,
+                    'actor_id' => $actor->id,
+                    'entry_type' => LedgerEntry::TYPE_TOURNAMENT_REFUND_DEBIT,
+                    'debit_cents' => $remainingSponsoredInEscrow,
+                    'credit_cents' => 0,
+                    'balance_before_cents' => $eBefore,
+                    'balance_after_cents' => $eAfter,
+                    'idempotency_key' => "{$trimmedKey}:refund_sponsored_debit",
+                    'description' => "Libération dotation sponsorisée suite à annulation — {$lockedTournament->title}",
+                ]);
+
+                $tBefore = (int) $lockedTreasuryWallet->balance_cents;
+                $tAfter = $tBefore + $remainingSponsoredInEscrow;
+                $lockedTreasuryWallet->balance_cents = $tAfter;
+                $lockedTreasuryWallet->save();
+
+                LedgerEntry::create([
+                    'wallet_id' => $lockedTreasuryWallet->id,
+                    'tournament_id' => $lockedTournament->id,
+                    'actor_id' => $actor->id,
+                    'entry_type' => LedgerEntry::TYPE_TOURNAMENT_REFUND_CREDIT,
+                    'debit_cents' => 0,
+                    'credit_cents' => $remainingSponsoredInEscrow,
+                    'balance_before_cents' => $tBefore,
+                    'balance_after_cents' => $tAfter,
+                    'idempotency_key' => "{$trimmedKey}:refund_sponsored_credit",
+                    'description' => "Retour dotation sponsorisée vers Trésorerie — {$lockedTournament->title}",
+                ]);
             }
 
             $lockedTournament->escrow_pool_cents = 0;

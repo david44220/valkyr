@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Models\LedgerEntry;
+use App\Models\PaymentRail;
 use App\Models\Tournament;
 use App\Models\TournamentRegistration;
 use App\Models\User;
+use App\Models\UserPaymentMethod;
+use App\Models\WalletFundingRequest;
 use App\Services\EscrowLedgerService;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
@@ -58,6 +61,9 @@ final class ArenaController extends Controller
      */
     private function buildArenaPayload(Request $request, EscrowLedgerService $ledgerService): array
     {
+        $systemWallets = $ledgerService->ensureSystemWallets();
+        $ledgerService->ensureDefaultPaymentRails();
+
         $tournaments = Tournament::with([
             'organizer',
             'registrations.user',
@@ -65,8 +71,13 @@ final class ArenaController extends Controller
             'secondPlace',
             'thirdPlace',
         ])
+            ->orderByDesc('is_featured')
             ->orderByRaw("CASE status WHEN 'OPEN' THEN 1 WHEN 'IN_PROGRESS' THEN 2 WHEN 'LOCKED' THEN 3 WHEN 'SETTLED' THEN 4 ELSE 5 END")
             ->orderByDesc('escrow_pool_cents')
+            ->get();
+
+        $paymentRails = PaymentRail::where('is_active', true)
+            ->orderBy('id')
             ->get();
 
         /** @var User|null $currentUser */
@@ -74,6 +85,8 @@ final class ArenaController extends Controller
         $wallet = null;
         $ledgerEntries = collect();
         $myRegistrations = collect();
+        $myPaymentMethods = collect();
+        $myFundingRequests = collect();
 
         if ($currentUser !== null) {
             $wallet = $ledgerService->getOrCreateWallet($currentUser);
@@ -86,6 +99,16 @@ final class ArenaController extends Controller
                 ->where('wallet_id', $wallet->id)
                 ->orderByDesc('id')
                 ->limit(60)
+                ->get();
+            $myPaymentMethods = UserPaymentMethod::with('paymentRail')
+                ->where('user_id', $currentUser->id)
+                ->orderByDesc('is_default')
+                ->orderBy('id')
+                ->get();
+            $myFundingRequests = WalletFundingRequest::with('paymentRail')
+                ->where('user_id', $currentUser->id)
+                ->orderByDesc('id')
+                ->limit(25)
                 ->get();
         } else {
             $ledgerEntries = LedgerEntry::with(['tournament', 'actor', 'wallet.user'])
@@ -116,6 +139,8 @@ final class ArenaController extends Controller
             ])->sum('escrow_pool_cents'),
             'total_prizes_distributed_cents' => (int) Tournament::where('status', Tournament::STATUS_SETTLED)->sum('net_prize_pool_cents'),
             'total_platform_rake_cents' => (int) Tournament::where('status', Tournament::STATUS_SETTLED)->sum('platform_rake_cents'),
+            'total_organizer_revshare_cents' => (int) Tournament::where('status', Tournament::STATUS_SETTLED)->sum('organizer_rake_cents'),
+            'treasury_balance_cents' => (int) $systemWallets['treasury']->balance_cents,
             'active_arenas_count' => (int) Tournament::whereIn('status', [
                 Tournament::STATUS_OPEN,
                 Tournament::STATUS_LOCKED,
@@ -123,14 +148,19 @@ final class ArenaController extends Controller
             ])->count(),
             'settled_arenas_count' => (int) Tournament::where('status', Tournament::STATUS_SETTLED)->count(),
             'rake_bps' => Tournament::DEFAULT_RAKE_BPS,
+            'prime_price_cents' => EscrowLedgerService::PRIME_SUBSCRIPTION_PRICE_CENTS,
+            'boost_price_cents' => EscrowLedgerService::ARENA_BOOST_PRICE_CENTS,
         ];
 
         return [
             'tournaments' => $tournaments,
+            'paymentRails' => $paymentRails,
             'currentUser' => $currentUser,
             'wallet' => $wallet,
             'ledgerEntries' => $ledgerEntries,
             'myRegistrations' => $myRegistrations,
+            'myPaymentMethods' => $myPaymentMethods,
+            'myFundingRequests' => $myFundingRequests,
             'leaderboard' => $leaderboard,
             'demoUsers' => $demoUsers,
             'platformStats' => $platformStats,

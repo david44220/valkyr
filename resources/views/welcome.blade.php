@@ -83,6 +83,11 @@
 
                 <!-- Authenticated Controls -->
                 <div id="header-auth-actions" class="{{ $currentUser ? 'flex' : 'hidden' }} items-center gap-2.5">
+                    @if($currentUser && $currentUser->isAdmin())
+                        <a href="/admin" class="h-11 px-3.5 bg-[#080B11] border border-[#E5C158] text-[#E5C158] hover:bg-[#E5C158] hover:text-[#030407] font-mono text-xs font-bold uppercase tracking-wider rounded-none whitespace-nowrap inline-flex items-center justify-center transition">
+                            <span>Commandement Admin ↗</span>
+                        </a>
+                    @endif
                     <a href="/dashboard" id="header-operator-badge" class="h-11 px-3 bg-[#121824] border border-[#E5C158]/40 text-[#E5C158] font-mono text-xs font-semibold whitespace-nowrap inline-flex items-center gap-2 tabular-nums hover:border-[#E5C158] transition">
                         <span>{{ $currentUser ? $currentUser->gamertag . ' [' . $currentUser->role . ']' : '' }}</span>
                         <span class="text-[#F4F7FB]">{{ $wallet ? '· ' . \App\Models\Wallet::formatCents($wallet->balance_cents) : '' }}</span>
@@ -110,6 +115,9 @@
                 <a href="#arsenal-section" data-i18n="nav.arsenal" class="py-2 text-sm font-mono uppercase tracking-wider text-[#F4F7FB] border-b border-white/[0.06]">Arsenal</a>
                 <a href="#leaderboard-section" data-i18n="nav.leaderboard" class="py-2 text-sm font-mono uppercase tracking-wider text-[#F4F7FB] border-b border-white/[0.06]">Classement</a>
                 @if($currentUser)
+                    @if($currentUser->isAdmin())
+                        <a href="/admin" class="py-2 text-sm font-mono font-bold uppercase tracking-wider text-[#E5C158] border-b border-white/[0.06]">⚙ Commandement Admin (/admin) ↗</a>
+                    @endif
                     <a href="/dashboard" class="py-2 text-sm font-mono uppercase tracking-wider text-[#E5C158] border-b border-white/[0.06]">Mon Cockpit ({{ $currentUser->gamertag }}) ↗</a>
                 @else
                     <a href="/login" class="py-2 text-sm font-mono uppercase tracking-wider text-[#E5C158] border-b border-white/[0.06]">Connexion Opérateur ↗</a>

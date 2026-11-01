@@ -31,7 +31,9 @@ final class WithdrawWalletRequest extends FormRequest
                 'min:100',
                 'max:50000000',
             ],
-            'iban' => ['nullable', 'string', 'min:10', 'max:64'],
+            'payment_rail_id' => ['nullable', 'integer', 'exists:payment_rails,id'],
+            'user_payment_method_id' => ['nullable', 'integer', 'exists:user_payment_methods,id'],
+            'iban' => ['nullable', 'string', 'min:6', 'max:120'],
             'idempotency_key' => ['required', 'string', 'min:4', 'max:140'],
         ];
     }

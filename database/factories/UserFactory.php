@@ -35,6 +35,10 @@ class UserFactory extends Factory
             'role' => User::ROLE_PLAYER,
             'elo_rating' => 1500,
             'preferred_class' => fake()->randomElement(User::ALLOWED_CLASSES),
+            'is_prime' => false,
+            'prime_expires_at' => null,
+            'is_frozen' => false,
+            'kyc_status' => User::KYC_STANDARD,
             'remember_token' => Str::random(10),
         ];
     }
