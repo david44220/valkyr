@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\Clan;
 use App\Models\LedgerEntry;
 use App\Models\PaymentRail;
 use App\Models\Tournament;
+use App\Models\TournamentDispute;
 use App\Models\User;
+use App\Models\VoucherCode;
+use App\Models\WagerDuel;
 use App\Models\Wallet;
 use App\Models\WalletFundingRequest;
 use App\Services\EscrowLedgerService;
@@ -16,6 +20,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
@@ -41,6 +46,7 @@ final class AdminController extends Controller
 
         $systemWallets = $ledgerService->ensureSystemWallets();
         $ledgerService->ensureDefaultPaymentRails();
+        $ledgerService->ensureDefaultArmoryItems();
 
         $treasuryWallet = $systemWallets['treasury']->fresh();
         $escrowWallet = $systemWallets['escrow']->fresh();
@@ -59,6 +65,10 @@ final class AdminController extends Controller
         $arenaBoostsRevenueCents = (int) ($sumsByType->get(LedgerEntry::TYPE_ARENA_BOOST_CREDIT)?->total_credits ?? 0);
         $organizerRevsharePaidCents = (int) ($sumsByType->get(LedgerEntry::TYPE_ORGANIZER_RAKE_SHARE_CREDIT)?->total_credits ?? 0);
         $sponsoredPoolInjectedCents = (int) ($sumsByType->get(LedgerEntry::TYPE_SPONSOR_POOL_CREDIT)?->total_credits ?? 0);
+        $armoryRevenueCents = (int) ($sumsByType->get(LedgerEntry::TYPE_ARMORY_REVENUE_CREDIT)?->total_credits ?? 0);
+        $clanLicensesRevenueCents = (int) ($sumsByType->get(LedgerEntry::TYPE_CLAN_LICENSE_CREDIT)?->total_credits ?? 0);
+        $disputeForfeitsRevenueCents = (int) ($sumsByType->get(LedgerEntry::TYPE_DISPUTE_FORFEIT_CREDIT)?->total_credits ?? 0);
+        $duelRakeCents = (int) WagerDuel::where('status', WagerDuel::STATUS_SETTLED)->sum('platform_rake_cents');
 
         $revenueMetrics = [
             'treasury_balance_cents' => (int) $treasuryWallet->balance_cents,
@@ -71,6 +81,10 @@ final class AdminController extends Controller
             'arena_boosts_revenue_cents' => $arenaBoostsRevenueCents,
             'organizer_revshare_paid_cents' => $organizerRevsharePaidCents,
             'sponsored_pool_injected_cents' => $sponsoredPoolInjectedCents,
+            'armory_revenue_cents' => $armoryRevenueCents,
+            'clan_licenses_revenue_cents' => $clanLicensesRevenueCents,
+            'dispute_forfeits_revenue_cents' => $disputeForfeitsRevenueCents,
+            'duel_rake_cents' => $duelRakeCents,
         ];
 
         $allWallets = Wallet::all();
@@ -130,13 +144,29 @@ final class AdminController extends Controller
             ->limit(80)
             ->get();
 
+        $voucherCodes = VoucherCode::orderByDesc('id')->get();
+
+        $disputes = TournamentDispute::with(['tournament', 'challenger', 'resolvedByAdmin'])
+            ->orderByRaw("CASE status WHEN 'OPEN' THEN 0 ELSE 1 END")
+            ->orderByDesc('id')
+            ->get();
+
+        $openDisputesCount = $disputes->where('status', TournamentDispute::STATUS_OPEN)->count();
+
+        $wagerDuels = WagerDuel::with(['challenger', 'opponent', 'winner'])
+            ->orderByDesc('id')
+            ->limit(30)
+            ->get();
+
+        $clans = Clan::with('owner')->orderByDesc('id')->get();
+
         $demoUsers = User::with('wallet')
             ->whereIn('email', AuthController::ALLOWED_DEMO_EMAILS)
             ->get()
             ->keyBy('email');
 
         $requestedPanel = strtolower(trim((string) $request->query('panel', 'treasury')));
-        if (! in_array($requestedPanel, ['treasury', 'rails', 'users', 'tournaments', 'ledger'], true)) {
+        if (! in_array($requestedPanel, ['treasury', 'rails', 'users', 'tournaments', 'vouchers', 'disputes', 'ledger'], true)) {
             $requestedPanel = 'treasury';
         }
 
@@ -152,6 +182,11 @@ final class AdminController extends Controller
             'operators' => $operators,
             'tournaments' => $tournaments,
             'masterLedgerEntries' => $masterLedgerEntries,
+            'voucherCodes' => $voucherCodes,
+            'disputes' => $disputes,
+            'openDisputesCount' => $openDisputesCount,
+            'wagerDuels' => $wagerDuels,
+            'clans' => $clans,
             'demoUsers' => $demoUsers,
         ];
 
@@ -471,5 +506,144 @@ final class AdminController extends Controller
         }
 
         return back()->with('status', "Paramètres de l'arène « {$tournament->title} » mis à jour.");
+    }
+
+    /**
+     * Brick 5 — Create a Prepaid Voucher Code in /admin (POST /admin/vouchers & POST /api/admin/vouchers)
+     */
+    public function storeVoucher(Request $request): JsonResponse|RedirectResponse
+    {
+        $admin = $this->assertAdmin($request);
+
+        $validated = $request->validate([
+            'code' => ['required', 'string', 'min:3', 'max:40', 'unique:voucher_codes,code'],
+            'credit_amount_cents' => [
+                'required',
+                function (string $attribute, mixed $value, Closure $fail): void {
+                    if (is_float($value) || is_bool($value) || ! preg_match('/^-?\d+$/', (string) $value)) {
+                        $fail('Le montant du code Voucher doit être exprimé en centimes entiers.');
+                    }
+                },
+                'integer',
+                'min:100',
+                'max:5000000',
+            ],
+            'max_uses' => ['required', 'integer', 'min:1', 'max:10000'],
+        ]);
+
+        $voucher = VoucherCode::create([
+            'code' => strtoupper(trim((string) $validated['code'])),
+            'credit_amount_cents' => (int) $validated['credit_amount_cents'],
+            'max_uses' => (int) $validated['max_uses'],
+            'used_count' => 0,
+            'is_active' => true,
+            'created_by_admin_id' => $admin->id,
+        ]);
+
+        $formatted = Wallet::formatCents((int) $voucher->credit_amount_cents);
+        $message = "Code Voucher « {$voucher->code} » ({$formatted} × {$voucher->max_uses}) généré.";
+
+        if ($request->is('api/*') || $request->expectsJson()) {
+            return response()->json([
+                'message' => $message,
+                'voucher' => $voucher,
+            ], 201);
+        }
+
+        return back()->with('status', $message);
+    }
+
+    /**
+     * Brick 6 — Resolve a Tournament Dispute in /admin (POST /admin/disputes/{dispute}/resolve & /api/admin/disputes/{dispute}/resolve)
+     */
+    public function resolveDispute(
+        Request $request,
+        TournamentDispute $dispute,
+        EscrowLedgerService $ledgerService
+    ): JsonResponse|RedirectResponse {
+        $admin = $this->assertAdmin($request);
+
+        $validated = $request->validate([
+            'decision' => ['required', 'string', Rule::in(['UPHELD', 'REJECTED'])],
+            'notes' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $result = $ledgerService->resolveTournamentDispute(
+            admin: $admin,
+            dispute: $dispute,
+            decision: (string) $validated['decision'],
+            notes: isset($validated['notes']) ? (string) $validated['notes'] : null,
+        );
+
+        $decisionLabel = $validated['decision'] === 'UPHELD'
+            ? 'Litige fondé : caution de 5,00 € remboursée au joueur.'
+            : 'Litige rejeté : caution d\'arbitrage de 5,00 € acquise par SYS_TREASURY.';
+
+        if ($request->is('api/*') || $request->expectsJson()) {
+            return response()->json([
+                'message' => $decisionLabel,
+                'dispute' => $result['dispute'],
+                'idempotent_replay' => $result['idempotent_replay'],
+            ], 200);
+        }
+
+        return back()->with('status', $decisionLabel);
+    }
+
+    /**
+     * Brick 7 — Certified CSV Ledger Export (GET /admin/export/ledger.csv & GET /api/admin/export/ledger.csv)
+     */
+    public function exportLedgerCsv(Request $request): Response
+    {
+        $this->assertAdmin($request);
+
+        $entries = LedgerEntry::with(['wallet.user', 'tournament', 'actor'])
+            ->orderBy('id')
+            ->get();
+
+        $lines = [
+            'id,created_at,wallet_id,operator_gamertag,entry_type,debit_cents,credit_cents,balance_before_cents,balance_after_cents,tournament_slug,idempotency_key,description',
+        ];
+
+        foreach ($entries as $entry) {
+            $gamertag = $this->sanitizeCsvCell((string) ($entry->wallet?->user?->gamertag ?? 'SYSTEM'));
+            $slug = $this->sanitizeCsvCell((string) ($entry->tournament?->slug ?? ''));
+            $idem = $this->sanitizeCsvCell((string) $entry->idempotency_key);
+            $desc = $this->sanitizeCsvCell((string) $entry->description);
+
+            $lines[] = sprintf(
+                '%d,"%s",%d,"%s","%s",%d,%d,%d,%d,"%s","%s","%s"',
+                (int) $entry->id,
+                (string) $entry->created_at,
+                (int) $entry->wallet_id,
+                $gamertag,
+                (string) $entry->entry_type,
+                (int) $entry->debit_cents,
+                (int) $entry->credit_cents,
+                (int) $entry->balance_before_cents,
+                (int) $entry->balance_after_cents,
+                $slug,
+                $idem,
+                $desc
+            );
+        }
+
+        $csv = implode("\r\n", $lines)."\r\n";
+
+        return response($csv, 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="valkyr-grand-livre-audit.csv"',
+        ]);
+    }
+
+    private function sanitizeCsvCell(string $value): string
+    {
+        $clean = str_replace(["\r", "\n"], ' ', $value);
+        $trimmed = ltrim($clean);
+        if ($trimmed !== '' && in_array($trimmed[0], ['=', '+', '-', '@', "\t"], true)) {
+            $clean = "'".$clean;
+        }
+
+        return str_replace('"', '""', $clean);
     }
 }

@@ -148,6 +148,22 @@ class Tournament extends Model
     }
 
     /**
+     * @return HasMany<TournamentPrediction, $this>
+     */
+    public function predictions(): HasMany
+    {
+        return $this->hasMany(TournamentPrediction::class, 'tournament_id')->orderByDesc('id');
+    }
+
+    /**
+     * @return HasMany<TournamentDispute, $this>
+     */
+    public function disputes(): HasMany
+    {
+        return $this->hasMany(TournamentDispute::class, 'tournament_id')->orderByDesc('id');
+    }
+
+    /**
      * @param  Builder<Tournament>  $query
      */
     #[Scope]

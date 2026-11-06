@@ -2810,6 +2810,21 @@
                 });
             });
         });
+
+        // 17. Cycle v4 — Quick Voucher Preset Buttons ([data-voucher-preset])
+        document.querySelectorAll('[data-voucher-preset]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const preset = btn.getAttribute('data-voucher-preset');
+                const input = document.getElementById('voucher-code-input');
+                if (input && preset) {
+                    input.value = preset;
+                    const idemInput = document.getElementById('voucher-idempotency-input');
+                    if (idemInput) {
+                        idemInput.value = generateIdempotencyKey('vch');
+                    }
+                }
+            });
+        });
     }
 
     // =========================================================================

@@ -23,6 +23,8 @@ use Illuminate\Notifications\Notifiable;
     'role',
     'elo_rating',
     'preferred_class',
+    'equipped_badge',
+    'clan_tag',
     'is_prime',
     'prime_expires_at',
     'is_frozen',
@@ -119,6 +121,30 @@ class User extends Authenticatable
     public function fundingRequests(): HasMany
     {
         return $this->hasMany(WalletFundingRequest::class, 'user_id')->orderByDesc('id');
+    }
+
+    /**
+     * @return HasMany<UserArmoryPurchase, $this>
+     */
+    public function armoryPurchases(): HasMany
+    {
+        return $this->hasMany(UserArmoryPurchase::class, 'user_id')->orderByDesc('id');
+    }
+
+    /**
+     * @return HasMany<TournamentPrediction, $this>
+     */
+    public function predictions(): HasMany
+    {
+        return $this->hasMany(TournamentPrediction::class, 'user_id')->orderByDesc('id');
+    }
+
+    /**
+     * @return HasMany<TournamentDispute, $this>
+     */
+    public function disputes(): HasMany
+    {
+        return $this->hasMany(TournamentDispute::class, 'challenger_user_id')->orderByDesc('id');
     }
 
     public function isAdmin(): bool

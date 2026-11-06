@@ -652,6 +652,227 @@
         </section>
 
         <!-- =================================================================
+             4B. V4 BRICK 3 & BRICK 6: SPECTATOR PREDICTION POOL + DISPUTE CENTER
+             ================================================================= -->
+        <section aria-label="Pronostics Spectateurs et Centre de Litiges" class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+
+            <!-- Left 6 Cols: Spectator Prediction Pool (#spectator-prediction-panel) -->
+            <div id="spectator-prediction-panel" class="lg:col-span-6 bg-[#0C1018] border border-[#E5C158]/40 p-6 sm:p-8 space-y-5">
+                <div class="flex flex-wrap items-start justify-between gap-4 border-b border-white/[0.08] pb-4">
+                    <div>
+                        <div class="text-[10px] font-mono uppercase tracking-widest text-[#E5C158]">
+                            BRIQUE V4 // POOL DE PRONOSTICS SPECTATEURS (PRORATA GAGNANTS)
+                        </div>
+                        <h2 class="font-display font-bold text-xl text-[#F4F7FB] uppercase mt-0.5">
+                            PRONOSTICS SPECTATEURS (90 % PRORATA / 10 % RAKE)
+                        </h2>
+                    </div>
+                    <div class="px-3.5 py-2 bg-[#080B11] border border-[#E5C158]/50 font-mono text-xs tabular-nums">
+                        <span class="text-[#94A3B8] block text-[10px]">POOL SPECTATEUR ACTUEL</span>
+                        <strong id="prediction-pool-total" class="text-base font-bold text-[#E5C158]">
+                            {{ \App\Models\Wallet::formatCents((int) ($predictionPoolCents ?? 0)) }}
+                        </strong>
+                    </div>
+                </div>
+
+                <p class="text-xs text-[#94A3B8] leading-relaxed font-mono">
+                    RÈGLE D'ALLOCATION : <strong class="text-[#10B981]">90 % redistribués au prorata</strong> aux pronostiqueurs ayant misé sur le vainqueur 1re place · <strong class="text-[#E5C158]">10 % Rake Trésorerie</strong> (100 % remboursé si aucun pronostic gagnant ou tournoi annulé).
+                </p>
+
+                @if(in_array($tournament->status, ['OPEN', 'LOCKED', 'IN_PROGRESS'], true) && $currentUser !== null)
+                    @if($tournament->registrations->count() > 0)
+                        <form
+                            id="form-tournament-predict"
+                            action="/tournaments/{{ $tournament->id }}/predict"
+                            method="POST"
+                            data-predict-tournament="{{ $tournament->id }}"
+                            class="bg-[#080B11] border border-white/10 p-4 space-y-3 font-mono text-xs"
+                        >
+                            @csrf
+                            <input
+                                type="hidden"
+                                name="idempotency_key"
+                                value="pred:t{{ $tournament->id }}:u{{ $currentUser->id }}:{{ now()->timestamp }}"
+                            />
+                            <div class="text-[10px] uppercase tracking-wider text-[#E5C158] font-bold">
+                                + ENGAGER UN PRONOSTIC DEPUIS VOTRE WALLET (MISE MIN : 2,00&nbsp;€)
+                            </div>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-[10px] text-[#94A3B8] mb-1">FAVORI PRONOSTIQUÉ (1RE PLACE)</label>
+                                    <select
+                                        name="predicted_winner_user_id"
+                                        required
+                                        class="w-full h-10 px-2.5 bg-[#0C1018] border border-white/15 text-[#F4F7FB]"
+                                    >
+                                        @foreach($tournament->registrations as $reg)
+                                            <option value="{{ $reg->user_id }}">
+                                                {{ $reg->user?->gamertag ?? 'OP #'.$reg->user_id }} ({{ $reg->loadout_class }})
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] text-[#94A3B8] mb-1">MISE EN CENTIMES (MIN 200)</label>
+                                    <input
+                                        type="number"
+                                        name="stake_cents"
+                                        value="1000"
+                                        min="200"
+                                        max="500000"
+                                        step="100"
+                                        required
+                                        class="w-full h-10 px-3 bg-[#0C1018] border border-white/15 text-[#F4F7FB] tabular-nums"
+                                    />
+                                </div>
+                            </div>
+                            <button
+                                type="submit"
+                                class="w-full h-10 px-4 bg-[#E5C158] text-[#030407] hover:bg-[#D8E5F8] font-bold uppercase tracking-wider whitespace-nowrap cursor-pointer transition"
+                            >
+                                Engager Pronostic Spectateur ↗
+                            </button>
+                        </form>
+                    @else
+                        <div class="p-3 bg-[#080B11] border border-white/10 font-mono text-xs text-[#94A3B8]">
+                            En attente du premier opérateur inscrit pour ouvrir les pronostics.
+                        </div>
+                    @endif
+                @elseif($currentUser === null)
+                    <div class="p-3 bg-[#080B11] border border-white/10 font-mono text-xs text-[#94A3B8] flex items-center justify-between gap-3">
+                        <span>Connectez-vous pour engager un pronostic depuis votre Wallet.</span>
+                        <a href="/login" class="px-3 py-1.5 bg-[#E5C158] text-[#030407] font-bold uppercase whitespace-nowrap">Connexion ↗</a>
+                    </div>
+                @endif
+
+                <!-- Committed Predictions List ($predictions) -->
+                <div class="space-y-2 font-mono text-xs tabular-nums">
+                    <div class="text-[10px] uppercase tracking-wider text-[#64748B]">
+                        PRONOSTICS ENGAGÉS ({{ ($predictions ?? collect())->count() }})
+                    </div>
+                    @forelse($predictions ?? collect() as $pred)
+                        <div class="p-3 bg-[#080B11] border border-white/[0.06] flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                                <span class="font-bold text-[#F4F7FB]">{{ $pred->user?->gamertag ?? 'OP#'.$pred->user_id }}</span>
+                                <span class="text-[#64748B] mx-1">➔</span>
+                                <span class="text-[#E5C158] font-bold">{{ $pred->predictedWinner?->gamertag ?? 'OP#'.$pred->predicted_winner_user_id }}</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-[#D8E5F8]">{{ \App\Models\Wallet::formatCents((int) $pred->stake_cents) }}</span>
+                                @if((int) $pred->payout_cents > 0)
+                                    <span class="text-[#10B981] font-bold">+{{ \App\Models\Wallet::formatCents((int) $pred->payout_cents) }}</span>
+                                @endif
+                                <span class="px-2 py-0.5 text-[10px] font-bold border {{ $pred->status === 'WON' ? 'border-[#10B981]/50 text-[#10B981]' : ($pred->status === 'LOCKED' ? 'border-[#E5C158]/50 text-[#E5C158]' : 'border-white/15 text-[#94A3B8]') }}">
+                                    {{ $pred->status }}
+                                </span>
+                            </div>
+                        </div>
+                    @empty
+                        <div class="p-4 bg-[#080B11] border border-white/[0.06] text-center text-[#64748B]">
+                            Aucun pronostic spectateur enregistré sur cette arène.
+                        </div>
+                    @endforelse
+                </div>
+            </div>
+
+            <!-- Right 6 Cols: Tournament Dispute Center & Arbitration Bond (#tournament-disputes-panel) -->
+            <div id="tournament-disputes-panel" class="lg:col-span-6 bg-[#0C1018] border border-white/[0.08] p-6 sm:p-8 space-y-5">
+                <div class="flex flex-wrap items-start justify-between gap-4 border-b border-white/[0.08] pb-4">
+                    <div>
+                        <div class="text-[10px] font-mono uppercase tracking-widest text-[#10B981]">
+                            BRIQUE V4 // TRIBUNAL D'ARBITRAGE &amp; CAUTION ANTI-ABUS
+                        </div>
+                        <h2 class="font-display font-bold text-xl text-[#F4F7FB] uppercase mt-0.5">
+                            CENTRE DE LITIGES &amp; CAUTION D'ARBITRAGE (5,00&nbsp;€)
+                        </h2>
+                    </div>
+                    <span class="px-3 py-1.5 bg-[#080B11] border border-white/10 font-mono text-xs text-[#D8E5F8] tabular-nums">
+                        CAUTION : 5,00&nbsp;€ (SYS_ESCROW_VAULT)
+                    </span>
+                </div>
+
+                <p class="text-xs text-[#94A3B8] leading-relaxed font-mono">
+                    Toute réclamation officielle consigne <strong class="text-[#E5C158]">5,00&nbsp;€</strong> en séquestre. Si le litige est validé par l'Admin (<code class="text-[#10B981]">UPHELD_REFUNDED</code>), la caution est intégralement remboursée. S'il est rejeté pour abus (<code class="text-[#EF4444]">REJECTED_FORFEITED</code>), la caution est acquise par <code class="text-[#E5C158]">SYS_TREASURY</code>.
+                </p>
+
+                @if($currentUser !== null)
+                    <form
+                        id="form-tournament-dispute"
+                        action="/tournaments/{{ $tournament->id }}/disputes"
+                        method="POST"
+                        data-dispute-tournament="{{ $tournament->id }}"
+                        class="bg-[#080B11] border border-white/10 p-4 space-y-3 font-mono text-xs"
+                    >
+                        @csrf
+                        <input
+                            type="hidden"
+                            name="idempotency_key"
+                            value="disp:t{{ $tournament->id }}:u{{ $currentUser->id }}:{{ now()->timestamp }}"
+                        />
+                        <div class="text-[10px] uppercase tracking-wider text-[#10B981] font-bold">
+                            + DÉPOSER UNE RÉCLAMATION OFFICIELLE (CONSIGNATION 5,00&nbsp;€ DEPUIS VOTRE WALLET)
+                        </div>
+                        <div>
+                            <label class="block text-[10px] text-[#94A3B8] mb-1">MOTIF TECHNIQUE / PREUVE TÉLÉMÉTRIQUE</label>
+                            <input
+                                type="text"
+                                name="reason"
+                                required
+                                minlength="6"
+                                placeholder="Ex: Désynchronisation serveur round 11 — demande vérification replay"
+                                class="w-full h-10 px-3 bg-[#0C1018] border border-white/15 text-[#F4F7FB]"
+                            />
+                        </div>
+                        <div>
+                            <label class="block text-[10px] text-[#94A3B8] mb-1">URL PREUVE VIDÉO / REPLAY (OPTIONNEL)</label>
+                            <input
+                                type="url"
+                                name="evidence_url"
+                                placeholder="https://replay.valkyr.arena/match-128tick"
+                                class="w-full h-10 px-3 bg-[#0C1018] border border-white/15 text-[#F4F7FB]"
+                            />
+                        </div>
+                        <button
+                            type="submit"
+                            class="w-full h-10 px-4 bg-[#D8E5F8] text-[#030407] hover:bg-[#E5C158] font-bold uppercase tracking-wider whitespace-nowrap cursor-pointer transition"
+                        >
+                            Ouvrir un Litige (Caution 5,00&nbsp;€) ↗
+                        </button>
+                    </form>
+                @endif
+
+                <!-- Disputes List ($disputes) -->
+                <div class="space-y-2 font-mono text-xs tabular-nums">
+                    <div class="text-[10px] uppercase tracking-wider text-[#64748B]">
+                        DOSSIERS D'ARBITRAGE ({{ ($disputes ?? collect())->count() }})
+                    </div>
+                    @forelse($disputes ?? collect() as $disp)
+                        <div class="p-3 bg-[#080B11] border border-white/[0.06] space-y-1.5">
+                            <div class="flex flex-wrap items-center justify-between gap-2">
+                                <span class="font-bold text-[#F4F7FB]">
+                                    #{{ $disp->id }} · {{ $disp->challenger?->gamertag ?? 'OP#'.$disp->challenger_user_id }}
+                                </span>
+                                <span class="px-2 py-0.5 text-[10px] font-bold border {{ $disp->status === 'UPHELD_REFUNDED' ? 'border-[#10B981]/50 text-[#10B981]' : ($disp->status === 'OPEN' ? 'border-[#E5C158] text-[#E5C158]' : 'border-[#EF4444]/50 text-[#EF4444]') }}">
+                                    {{ $disp->status }}
+                                </span>
+                            </div>
+                            <p class="text-[#94A3B8] text-[11px]">{{ $disp->reason }}</p>
+                            @if($disp->admin_resolution_notes)
+                                <div class="text-[11px] text-[#E5C158]">
+                                    Décision Arbitre : {{ $disp->admin_resolution_notes }}
+                                </div>
+                            @endif
+                        </div>
+                    @empty
+                        <div class="p-4 bg-[#080B11] border border-white/[0.06] text-center text-[#64748B]">
+                            Aucun litige ouvert sur cette arène.
+                        </div>
+                    @endforelse
+                </div>
+            </div>
+        </section>
+
+        <!-- =================================================================
              5. ARENA ESCROW AUDIT LEDGER TABLE ($tournament->ledgerEntries)
              ================================================================= -->
         <section aria-label="Grand Livre du Tournoi" class="bg-[#0C1018] border border-white/[0.08] p-6 sm:p-8">

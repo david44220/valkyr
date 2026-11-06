@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
+use App\Models\ArmoryItem;
 use App\Models\PaymentRail;
 use App\Models\Tournament;
 use App\Models\User;
 use App\Models\UserPaymentMethod;
+use App\Models\VoucherCode;
 use App\Services\EscrowLedgerService;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -16,13 +18,14 @@ final class DatabaseSeeder extends Seeder
 {
     /**
      * Seed the application's database with deterministic accounts, wallets, payment rails,
-     * saved payment methods, tournaments, and all 5 revenue streams on the double-entry ledger.
+     * saved payment methods, tournaments, and all 8 revenue streams on the double-entry ledger.
      */
     public function run(): void
     {
         $ledgerService = app(EscrowLedgerService::class);
         $ledgerService->ensureSystemWallets();
         $ledgerService->ensureDefaultPaymentRails();
+        $ledgerService->ensureDefaultArmoryItems();
 
         $defaultPassword = Hash::make('Password123!');
 
@@ -198,7 +201,7 @@ final class DatabaseSeeder extends Seeder
         // Players receive initial deposits so that after tournament buy-ins and settlements their balances are abundant
         $ledgerService->deposit($nyx, 180000, 'seed:deposit:nyx:01', 'Dépôt initial vérifié SEPA Instant // VKR_NYX', $sepaInstantRail?->id, 'SEPA-NYX-001');
         $ledgerService->deposit($kestrel, 150000, 'seed:deposit:kestrel:01', 'Dépôt initial vérifié SEPA Instant // KESTREL_ZERO', $sepaInstantRail?->id, 'SEPA-KES-001');
-        // Card deposit by KESTREL_ZERO generating Payment Rail Fee revenue (1.5% + 0.35€ = 1.85€ -> 185 cents to SYS_TREASURY)
+        // Card deposit by KESTREL_ZERO generating Payment Rail Fee revenue (1.5% + 0.25€ = 1.75€ -> 175 cents to SYS_TREASURY)
         $ledgerService->deposit($kestrel, 10000, 'seed:deposit:kestrel:card02', 'Rechargement Carte 3D-Secure // KESTREL_ZERO', $cardRail?->id, 'VISA-3DS-9841');
         $ledgerService->deposit($aether, 145000, 'seed:deposit:aether:01', 'Dépôt initial vérifié SEPA Instant // AETHER_9', $sepaInstantRail?->id, 'SEPA-AET-001');
         $ledgerService->deposit($sovereign, 125000, 'seed:deposit:sovereign:01', 'Dépôt initial vérifié SEPA Instant // SOVEREIGN_X', $sepaInstantRail?->id, 'SEPA-SOV-001');
@@ -239,6 +242,9 @@ final class DatabaseSeeder extends Seeder
 
         // Sponsor Pool Injection: VKR_COMMANDER injects 200,00 € (20000 cents) from Wallet into T1 Escrow Vault
         $ledgerService->sponsorTournament($admin, $t1, 20000, 'seed:sponsor:t1:admin');
+
+        // v4 Brick 3: Spectator Prediction on T1 (SOVEREIGN_X stakes 15,00 € on VKR_NYX)
+        $ledgerService->placeTournamentPrediction($sovereign, $t1, $nyx->id, 1500, 'seed:predict:t1:sovereign');
 
         // 6. Tournament 2 — OPEN (CS2 Tactical Invitational, open to NYX & AETHER)
         $t2 = Tournament::updateOrCreate(
@@ -345,7 +351,16 @@ final class DatabaseSeeder extends Seeder
         $t5->status = Tournament::STATUS_IN_PROGRESS;
         $t5->save();
 
-        // 10. Tournament 6 — SETTLED Archive (400,00 € Pool -> 24,00 € Platform Rake (6%) + 8,00 € Organizer RevShare (2%) + 368,00 € Net Distributed 60/30/10)
+        // v4 Brick 6: Open Tournament Dispute on T5 by KESTREL_ZERO (5,00 € arbitration bond locked in SYS_ESCROW_VAULT)
+        $ledgerService->openTournamentDispute(
+            challenger: $kestrel,
+            tournament: $t5,
+            reason: 'Contestation de désynchronisation tickrate 128 Hz au round 11 (Demi-finale Alpha).',
+            evidenceUrl: 'https://telemetry.valkyr.arena/replays/orion-sf01-r11',
+            idempotencyKey: 'seed:dispute:t5:kestrel:01'
+        );
+
+        // 10. Tournament 6 — SETTLED Archive (400,00 € Pool + Spectator Prediction Pool settled automatically)
         $t6 = Tournament::updateOrCreate(
             ['slug' => 'valkyr-genesis-major-finale'],
             [
@@ -372,6 +387,10 @@ final class DatabaseSeeder extends Seeder
         $ledgerService->registerForTournament($aether, $t6, 'seed:reg:t6:aether', 'CHRONO');
         $ledgerService->registerForTournament($sovereign, $t6, 'seed:reg:t6:sovereign', 'VANGUARD');
 
+        // v4 Brick 3: Spectator predictions on T6 before settlement (AETHER_9 predicts VKR_NYX, SOVEREIGN_X predicts KESTREL_ZERO)
+        $ledgerService->placeTournamentPrediction($aether, $t6, $nyx->id, 2000, 'seed:predict:t6:aether');
+        $ledgerService->placeTournamentPrediction($sovereign, $t6, $kestrel->id, 1000, 'seed:predict:t6:sovereign');
+
         $ledgerService->settleTournament(
             actor: $organizer,
             tournament: $t6,
@@ -381,7 +400,71 @@ final class DatabaseSeeder extends Seeder
             idempotencyKey: 'seed:settle:t6:official'
         );
 
-        // 11. Pending Manual Funding Requests (SEPA_MANUAL_WIRE) for 1-click Admin Approval in /admin
+        // 11. v4 Brick 1 — Instant 1v1 Cash-Match Wager Duels (1 Settled + 1 Open ready to accept)
+        $duel1Res = $ledgerService->createWagerDuel(
+            challenger: $nyx,
+            game: 'VALORANT // PROTOCOL',
+            loadoutClass: 'VALKYRIE',
+            stakeCents: 4000, // 40,00 € per player -> 80,00 € pot
+            idempotencyKey: 'seed:duel:01:create'
+        );
+        $ledgerService->acceptWagerDuel($kestrel, $duel1Res['duel'], 'seed:duel:01:accept');
+        $ledgerService->settleWagerDuel($nyx, $duel1Res['duel']->fresh(), $nyx->id, 'seed:duel:01:settle');
+
+        $ledgerService->createWagerDuel(
+            challenger: $aether,
+            game: 'COUNTER-STRIKE 2',
+            loadoutClass: 'CHRONO',
+            stakeCents: 2500, // 25,00 € stake open for any opponent
+            idempotencyKey: 'seed:duel:02:open'
+        );
+
+        // 12. v4 Brick 2 — Armory Store Purchase by VKR_NYX
+        $sovereignBadge = ArmoryItem::where('sku', 'VKR-BADGE-SOVEREIGN')->first();
+        if ($sovereignBadge !== null) {
+            $ledgerService->purchaseArmoryItem($nyx, $sovereignBadge, 'seed:armory:nyx:badge01');
+        }
+
+        // 13. v4 Brick 4 — B2B Clan Franchises (29,00 € License to SYS_TREASURY)
+        $vkrClanRes = $ledgerService->createClan(
+            founder: $organizer,
+            tag: 'VKR',
+            name: 'VALKYR SOVEREIGN DIVISION',
+            idempotencyKey: 'seed:clan:vkr:01'
+        );
+        $ledgerService->joinClan($kestrel, $vkrClanRes['clan']);
+
+        $ledgerService->createClan(
+            founder: $nyx,
+            tag: 'NYX',
+            name: 'SHADOW PROTOCOL SYNDICATE',
+            idempotencyKey: 'seed:clan:nyx:01'
+        );
+
+        // 14. v4 Brick 5 — Prepaid Voucher Codes created by Admin + 1 redemption by SOVEREIGN_X
+        VoucherCode::updateOrCreate(
+            ['code' => 'VALKYR-VIP-50'],
+            [
+                'credit_amount_cents' => 5000, // 50,00 €
+                'max_uses' => 25,
+                'used_count' => 0,
+                'is_active' => true,
+                'created_by_admin_id' => $admin->id,
+            ]
+        );
+        VoucherCode::updateOrCreate(
+            ['code' => 'SOVEREIGN-100'],
+            [
+                'credit_amount_cents' => 10000, // 100,00 €
+                'max_uses' => 10,
+                'used_count' => 0,
+                'is_active' => true,
+                'created_by_admin_id' => $admin->id,
+            ]
+        );
+        $ledgerService->redeemVoucher($sovereign, 'VALKYR-VIP-50', 'seed:voucher:sovereign:vip50');
+
+        // 15. Pending Manual Funding Requests (SEPA_MANUAL) for 1-click Admin Approval in /admin
         if ($sepaManualRail !== null) {
             $ledgerService->deposit(
                 user: $kestrel,

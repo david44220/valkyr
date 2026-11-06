@@ -26,12 +26,16 @@
             'activeCockpitTab' => $activeTabKey,
             'tournaments' => $tournaments,
             'paymentRails' => $paymentRails ?? collect(),
+            'wagerDuels' => $wagerDuels ?? collect(),
+            'armoryItems' => $armoryItems ?? collect(),
+            'clans' => $clans ?? collect(),
             'currentUser' => $currentUser,
             'wallet' => $wallet,
             'ledgerEntries' => $ledgerEntries,
             'myRegistrations' => $myRegistrations,
             'myPaymentMethods' => $myPaymentMethods ?? collect(),
             'myFundingRequests' => $myFundingRequests ?? collect(),
+            'myArmoryItemIds' => $myArmoryItemIds ?? [],
             'leaderboard' => $leaderboard,
             'platformStats' => $platformStats,
         ];
@@ -148,7 +152,12 @@
                                 {{ $currentUser->role }}
                             </span>
                         </div>
-                        <div class="flex items-center gap-2">
+                        <div class="flex flex-wrap items-center gap-2">
+                            @if($currentUser->clan_tag)
+                                <span id="sidebar-clan-tag-badge" class="px-1.5 py-0.5 bg-[#121824] border border-[#D8E5F8]/40 text-[#D8E5F8] font-mono text-xs font-bold">
+                                    [{{ $currentUser->clan_tag }}]
+                                </span>
+                            @endif
                             <div id="cockpit-operator-title" class="font-display font-extrabold text-xl text-[#F4F7FB] tracking-tight truncate">
                                 {{ $currentUser->gamertag }}
                             </div>
@@ -158,7 +167,12 @@
                                 </span>
                             @endif
                         </div>
-                        <div id="cockpit-operator-email" class="font-mono text-xs text-[#94A3B8] truncate mt-0.5">
+                        @if($currentUser->equipped_badge)
+                            <div id="sidebar-equipped-badge" class="mt-2 px-2 py-1 bg-[#E5C158]/15 border border-[#E5C158]/50 text-[#E5C158] font-mono text-[10px] font-bold uppercase tracking-wider inline-block">
+                                ★ {{ $currentUser->equipped_badge }}
+                            </div>
+                        @endif
+                        <div id="cockpit-operator-email" class="font-mono text-xs text-[#94A3B8] truncate mt-1">
                             {{ $currentUser->email }}
                         </div>
                         <div class="mt-3 flex flex-wrap items-center gap-2 font-mono text-[10px] tabular-nums">
@@ -749,6 +763,356 @@
                                 >
                                     {{ $clsName }}
                                 </button>
+                            @endforeach
+                        </div>
+                    </div>
+
+                    <!-- =====================================================
+                         V4 BRICK 5: ACTIVATION DE CODE VOUCHER PRÉPAYÉ (#voucher-redeem-form)
+                         ===================================================== -->
+                    <div class="bg-[#080B11] border border-[#10B981]/35 p-6 space-y-4">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div>
+                                <div class="text-[10px] font-mono uppercase tracking-widest text-[#10B981]">
+                                    BRIQUE V4 // CRÉDIT PRÉPAYÉ &amp; DOTATIONS PARTENAIRES
+                                </div>
+                                <h3 class="font-display font-bold text-lg text-[#F4F7FB] uppercase">
+                                    ACTIVER UN CODE VOUCHER SOUVERAIN (CRÉDIT WALLET IMMÉDIAT)
+                                </h3>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2 font-mono text-[11px]">
+                                <button
+                                    type="button"
+                                    data-voucher-preset="SOVEREIGN-100"
+                                    class="h-8 px-2.5 bg-[#121824] border border-[#E5C158]/40 hover:border-[#E5C158] text-[#E5C158] font-bold uppercase cursor-pointer transition"
+                                >
+                                    Code : SOVEREIGN-100 (+100,00&nbsp;€)
+                                </button>
+                                <button
+                                    type="button"
+                                    data-voucher-preset="VALKYR-VIP-50"
+                                    class="h-8 px-2.5 bg-[#121824] border border-[#10B981]/40 hover:border-[#10B981] text-[#10B981] font-bold uppercase cursor-pointer transition"
+                                >
+                                    Code : VALKYR-VIP-50 (+50,00&nbsp;€)
+                                </button>
+                            </div>
+                        </div>
+
+                        <form id="voucher-redeem-form" action="/wallets/redeem-voucher" method="POST" class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 font-mono text-xs">
+                            @csrf
+                            <input
+                                type="hidden"
+                                name="idempotency_key"
+                                id="voucher-idempotency-key"
+                                value="voucher-ui-{{ $currentUser->id }}-{{ now()->timestamp }}"
+                            />
+                            <input
+                                type="text"
+                                name="code"
+                                id="voucher-code-input"
+                                value="SOVEREIGN-100"
+                                required
+                                placeholder="Entrez un code Voucher (ex: SOVEREIGN-100 ou VALKYR-VIP-50)"
+                                class="flex-1 min-w-0 h-11 px-4 bg-[#0C1018] border border-white/15 text-[#F4F7FB] uppercase focus:border-[#10B981] focus:outline-none rounded-none"
+                            />
+                            <button
+                                type="submit"
+                                class="h-11 px-5 bg-[#10B981] text-[#030407] hover:bg-[#E5C158] font-mono text-xs font-bold uppercase tracking-wider whitespace-nowrap cursor-pointer transition"
+                            >
+                                Créditer mon Wallet (Voucher) ↗
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- =====================================================
+                         V4 BRICK 1: DÉFIS 1V1 INSTANTANÉS « CASH-MATCH / WAGER DUELS » (#wager-duels-section)
+                         ===================================================== -->
+                    <div id="wager-duels-section" class="bg-[#080B11] border border-white/[0.08] p-6 space-y-6">
+                        <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-3 border-b border-white/[0.08] pb-4">
+                            <div>
+                                <div class="text-[10px] font-mono uppercase tracking-widest text-[#E5C158]">
+                                    BRIQUE V4 // SÉQUESTRE BILATÉRAL 1V1 · RAKE 8 % (800 BPS) · PAYOUT 92 %
+                                </div>
+                                <h3 class="font-display font-extrabold text-xl text-[#F4F7FB] uppercase">
+                                    DÉFIS 1V1 INSTANTANÉS « CASH-MATCH / WAGER DUELS »
+                                </h3>
+                            </div>
+                            <span class="px-3 py-1 bg-[#121824] border border-white/10 font-mono text-xs text-[#D8E5F8] tabular-nums">
+                                {{ ($wagerDuels ?? collect())->where('status', 'OPEN')->count() }} DUEL(S) OUVERT(S)
+                            </span>
+                        </div>
+
+                        <!-- Create 1v1 Duel Form -->
+                        <form id="form-create-duel" action="/duels" method="POST" class="bg-[#0C1018] border border-white/10 p-4 space-y-3 font-mono text-xs">
+                            @csrf
+                            <input type="hidden" name="idempotency_key" value="duel-create-{{ $currentUser->id }}-{{ now()->timestamp }}" />
+                            <div class="text-[10px] uppercase tracking-wider text-[#E5C158] font-bold">
+                                + OUVRIR UN NOUVEAU DÉFI 1V1 (VERROUILLAGE SÉQUESTRE IMMÉDIAT DEPUIS VOTRE WALLET)
+                            </div>
+                            <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                                <div>
+                                    <label class="block text-[10px] text-[#94A3B8] mb-1">JEU COMPÉTITIF</label>
+                                    <select name="game" class="w-full h-10 px-2.5 bg-[#080B11] border border-white/15 text-[#F4F7FB]">
+                                        <option value="VALORANT // PROTOCOL">VALORANT // PROTOCOL</option>
+                                        <option value="COUNTER-STRIKE 2">COUNTER-STRIKE 2</option>
+                                        <option value="APEX // SOVEREIGN">APEX // SOVEREIGN</option>
+                                        <option value="LEAGUE OF LEGENDS">LEAGUE OF LEGENDS</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] text-[#94A3B8] mb-1">CLASSE ENGAGÉE</label>
+                                    <select name="loadout_class" class="w-full h-10 px-2.5 bg-[#080B11] border border-white/15 text-[#F4F7FB]">
+                                        @foreach(['VALKYRIE', 'VANGUARD', 'SPECTRE', 'CHRONO'] as $cOpt)
+                                            <option value="{{ $cOpt }}" {{ $currentUser->preferred_class === $cOpt ? 'selected' : '' }}>{{ $cOpt }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] text-[#94A3B8] mb-1">MISE 1V1 (CENTIMES, MIN 500)</label>
+                                    <input
+                                        type="number"
+                                        name="stake_cents"
+                                        value="2500"
+                                        min="500"
+                                        max="500000"
+                                        step="100"
+                                        required
+                                        class="w-full h-10 px-3 bg-[#080B11] border border-white/15 text-[#F4F7FB] tabular-nums"
+                                    />
+                                </div>
+                                <div class="flex items-end">
+                                    <button
+                                        type="submit"
+                                        class="w-full h-10 px-4 bg-[#E5C158] text-[#030407] hover:bg-[#D8E5F8] font-bold uppercase tracking-wider whitespace-nowrap cursor-pointer transition"
+                                    >
+                                        Lancer Défi 1v1 ↗
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+
+                        <!-- Active & Settled Wager Duels List -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 font-mono text-xs tabular-nums">
+                            @forelse($wagerDuels ?? collect() as $duel)
+                                @php
+                                    $canAcceptDuel = $duel->status === 'OPEN' && (int) $duel->challenger_id !== (int) $currentUser->id;
+                                    $canSettleDuel = $duel->status === 'IN_PROGRESS' && (
+                                        $currentUser->isAdmin() ||
+                                        (int) $duel->challenger_id === (int) $currentUser->id ||
+                                        (int) $duel->opponent_id === (int) $currentUser->id
+                                    );
+                                @endphp
+                                <div class="bg-[#0C1018] border {{ $duel->status === 'OPEN' ? 'border-[#10B981]/40' : ($duel->status === 'IN_PROGRESS' ? 'border-[#E5C158]/50' : 'border-white/[0.08]') }} p-4 flex flex-col justify-between gap-3">
+                                    <div>
+                                        <div class="flex items-center justify-between gap-2 mb-2">
+                                            <span class="text-[11px] font-bold text-[#D8E5F8]">{{ $duel->code }} · {{ $duel->game }}</span>
+                                            <span class="px-2 py-0.5 text-[10px] font-bold border {{ $duel->status === 'OPEN' ? 'border-[#10B981]/50 text-[#10B981]' : ($duel->status === 'IN_PROGRESS' ? 'border-[#E5C158] text-[#E5C158]' : 'border-white/15 text-[#94A3B8]') }}">
+                                                {{ $duel->status }}
+                                            </span>
+                                        </div>
+                                        <div class="text-sm font-bold text-[#F4F7FB] mb-2">
+                                            {{ $duel->challenger?->gamertag ?? 'OP#'.$duel->challenger_id }}
+                                            <span class="text-[#E5C158] mx-1">VS</span>
+                                            {{ $duel->opponent?->gamertag ?? 'EN ATTENTE D\'ADVERSAIRE' }}
+                                        </div>
+                                        <div class="grid grid-cols-2 gap-2 bg-[#080B11] border border-white/[0.06] p-2.5 text-[11px]">
+                                            <div>
+                                                <span class="text-[#64748B] block text-[10px]">MISE PAR JOUEUR</span>
+                                                <strong class="text-[#F4F7FB]">{{ \App\Models\Wallet::formatCents((int) $duel->stake_cents) }}</strong>
+                                            </div>
+                                            <div>
+                                                <span class="text-[#64748B] block text-[10px]">POT SÉQUESTRE</span>
+                                                <strong class="text-[#E5C158]">{{ \App\Models\Wallet::formatCents((int) $duel->escrow_pot_cents) }}</strong>
+                                            </div>
+                                        </div>
+                                        @if($duel->status === 'SETTLED' && $duel->winner)
+                                            <div class="mt-2 text-[11px] text-[#10B981]">
+                                                ✓ Vainqueur : <strong>{{ $duel->winner->gamertag }}</strong> (+{{ \App\Models\Wallet::formatCents((int) $duel->winner_payout_cents) }} net · Rake {{ \App\Models\Wallet::formatCents((int) $duel->platform_rake_cents) }})
+                                            </div>
+                                        @endif
+                                    </div>
+
+                                    @if($canAcceptDuel)
+                                        <form action="/duels/{{ $duel->id }}/accept" method="POST" data-accept-duel="{{ $duel->id }}">
+                                            @csrf
+                                            <input type="hidden" name="idempotency_key" value="duel-acc-{{ $duel->id }}-{{ $currentUser->id }}-{{ now()->timestamp }}" />
+                                            <button
+                                                type="submit"
+                                                class="w-full h-10 px-4 bg-[#10B981] text-[#030407] hover:bg-[#E5C158] font-bold uppercase tracking-wider whitespace-nowrap cursor-pointer transition"
+                                            >
+                                                Accepter le Duel 1v1 ({{ \App\Models\Wallet::formatCents((int) $duel->stake_cents) }}) ↗
+                                            </button>
+                                        </form>
+                                    @elseif($canSettleDuel)
+                                        <form action="/duels/{{ $duel->id }}/settle" method="POST" data-settle-duel="{{ $duel->id }}" class="flex items-center gap-2">
+                                            @csrf
+                                            <input type="hidden" name="idempotency_key" value="duel-set-{{ $duel->id }}-{{ now()->timestamp }}" />
+                                            <select name="winner_user_id" class="flex-1 min-w-0 h-9 px-2 bg-[#080B11] border border-white/15 text-[#F4F7FB] text-[11px]">
+                                                <option value="{{ $duel->challenger_id }}">Gagnant : {{ $duel->challenger?->gamertag }}</option>
+                                                @if($duel->opponent_id)
+                                                    <option value="{{ $duel->opponent_id }}">Gagnant : {{ $duel->opponent?->gamertag }}</option>
+                                                @endif
+                                            </select>
+                                            <button
+                                                type="submit"
+                                                class="h-9 px-3 bg-[#E5C158] text-[#030407] hover:bg-[#10B981] font-bold uppercase text-[11px] whitespace-nowrap cursor-pointer transition"
+                                            >
+                                                Clôturer Duel ✓
+                                            </button>
+                                        </form>
+                                    @endif
+                                </div>
+                            @empty
+                                <div class="col-span-2 p-4 bg-[#0C1018] border border-white/[0.06] text-center text-[#64748B]">
+                                    Aucun défi 1v1 en cours. Lancez le premier Cash-Match ci-dessus.
+                                </div>
+                            @endforelse
+                        </div>
+                    </div>
+
+                    <!-- =====================================================
+                         V4 BRICK 2: BOUTIQUE SOUVERAINE « ARMORY » (#armory-store-section)
+                         ===================================================== -->
+                    <div id="armory-store-section" class="bg-[#080B11] border border-[#E5C158]/35 p-6 space-y-5">
+                        <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-3 border-b border-white/[0.08] pb-4">
+                            <div>
+                                <div class="text-[10px] font-mono uppercase tracking-widest text-[#E5C158]">
+                                    BRIQUE V4 // LICENCES COSMÉTIQUES &amp; BOOSTS ELO OFFICIELS (100 % WALLET ➔ SYS_TREASURY)
+                                </div>
+                                <h3 class="font-display font-extrabold text-xl text-[#F4F7FB] uppercase">
+                                    BOUTIQUE SOUVERAINE « ARMORY » &amp; BADGES OPÉRATEUR
+                                </h3>
+                            </div>
+                            @if($currentUser->equipped_badge)
+                                <span class="px-3 py-1 bg-[#E5C158]/15 border border-[#E5C158]/50 text-[#E5C158] font-mono text-xs font-bold">
+                                    BADGE ACTIF : ★ {{ $currentUser->equipped_badge }}
+                                </span>
+                            @endif
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 font-mono text-xs tabular-nums">
+                            @foreach($armoryItems ?? collect() as $item)
+                                @php
+                                    $isOwned = in_array((int) $item->id, $myArmoryItemIds ?? [], true);
+                                @endphp
+                                <div class="bg-[#0C1018] border {{ $isOwned ? 'border-[#10B981]/50' : 'border-white/10' }} p-4 flex flex-col justify-between gap-4">
+                                    <div>
+                                        <div class="flex items-center justify-between gap-2 mb-2">
+                                            <span class="px-2 py-0.5 bg-[#121824] border border-white/10 text-[10px] text-[#D8E5F8]">{{ $item->sku }}</span>
+                                            <span class="px-2 py-0.5 bg-[#E5C158]/15 border border-[#E5C158]/40 text-[10px] font-bold text-[#E5C158]">+{{ $item->elo_bonus }} MMR ELO</span>
+                                        </div>
+                                        <h4 class="font-display font-bold text-base text-[#F4F7FB] uppercase">{{ $item->name }}</h4>
+                                        <div class="mt-1 text-[11px] text-[#E5C158]">Badge : « ★ {{ $item->badge_label }} »</div>
+                                        <p class="mt-2 font-sans text-xs text-[#94A3B8] leading-relaxed">{{ $item->description }}</p>
+                                    </div>
+
+                                    <div class="pt-3 border-t border-white/[0.06] flex items-center justify-between gap-3">
+                                        <div>
+                                            <span class="text-[10px] text-[#64748B] block">PRIX LICENCE</span>
+                                            <strong class="text-sm text-[#F4F7FB]">{{ \App\Models\Wallet::formatCents((int) $item->price_cents) }}</strong>
+                                        </div>
+
+                                        <form action="/armory/{{ $item->id }}/buy" method="POST" data-buy-armory="{{ $item->id }}">
+                                            @csrf
+                                            <input type="hidden" name="idempotency_key" value="armory-buy-{{ $item->id }}-{{ $currentUser->id }}-{{ now()->timestamp }}" />
+                                            <button
+                                                type="submit"
+                                                class="h-10 px-4 {{ $isOwned ? 'bg-[#10B981]/20 border border-[#10B981]/50 text-[#10B981]' : 'bg-[#E5C158] text-[#030407] hover:bg-[#D8E5F8]' }} font-bold uppercase tracking-wider whitespace-nowrap cursor-pointer transition"
+                                            >
+                                                {{ $isOwned ? '✓ Équipé / Acquis' : 'Acheter & Équiper ↗' }}
+                                            </button>
+                                        </form>
+                                    </div>
+                                </div>
+                            @endforeach
+                        </div>
+                    </div>
+
+                    <!-- =====================================================
+                         V4 BRICK 4: FRANCHISES DE CLANS B2B (#clans-franchise-section)
+                         ===================================================== -->
+                    <div id="clans-franchise-section" class="bg-[#080B11] border border-white/[0.08] p-6 space-y-5">
+                        <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-3 border-b border-white/[0.08] pb-4">
+                            <div>
+                                <div class="text-[10px] font-mono uppercase tracking-widest text-[#D8E5F8]">
+                                    BRIQUE V4 // LICENCE D'ESCOUADE OFFICIELLE (29,00&nbsp;€ VIA WALLET ➔ SYS_TREASURY)
+                                </div>
+                                <h3 class="font-display font-extrabold text-xl text-[#F4F7FB] uppercase">
+                                    FRANCHISES DE CLANS B2B &amp; REGISTRE DES ESCOUADES
+                                </h3>
+                            </div>
+                            @if($currentUser->clan_tag)
+                                <span class="px-3 py-1 bg-[#121824] border border-[#D8E5F8]/40 text-[#D8E5F8] font-mono text-xs font-bold">
+                                    CLAN ACTUEL : [{{ $currentUser->clan_tag }}]
+                                </span>
+                            @endif
+                        </div>
+
+                        <!-- Create Clan Franchise Form -->
+                        <form id="form-create-clan" action="/clans" method="POST" class="bg-[#0C1018] border border-white/10 p-4 space-y-3 font-mono text-xs">
+                            @csrf
+                            <input type="hidden" name="idempotency_key" value="clan-create-{{ $currentUser->id }}-{{ now()->timestamp }}" />
+                            <div class="text-[10px] uppercase tracking-wider text-[#E5C158] font-bold">
+                                + FONDER UNE NOUVELLE FRANCHISE CLAN (FRAIS D'ENREGISTREMENT : 29,00&nbsp;€ DÉBITÉS DU WALLET)
+                            </div>
+                            <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                                <div>
+                                    <label class="block text-[10px] text-[#94A3B8] mb-1">TAG (2 À 6 CAR.)</label>
+                                    <input
+                                        type="text"
+                                        name="tag"
+                                        maxlength="6"
+                                        placeholder="Ex: TITAN"
+                                        required
+                                        class="w-full h-10 px-3 bg-[#080B11] border border-white/15 text-[#F4F7FB] uppercase"
+                                    />
+                                </div>
+                                <div class="sm:col-span-2">
+                                    <label class="block text-[10px] text-[#94A3B8] mb-1">NOM OFFICIEL DE LA FRANCHISE</label>
+                                    <input
+                                        type="text"
+                                        name="name"
+                                        placeholder="Ex: TITAN SOVEREIGN LEGION"
+                                        required
+                                        class="w-full h-10 px-3 bg-[#080B11] border border-white/15 text-[#F4F7FB]"
+                                    />
+                                </div>
+                                <div class="flex items-end">
+                                    <button
+                                        type="submit"
+                                        class="w-full h-10 px-4 bg-[#D8E5F8] text-[#030407] hover:bg-[#E5C158] font-bold uppercase tracking-wider whitespace-nowrap cursor-pointer transition"
+                                    >
+                                        Fonder Clan (29,00&nbsp;€) ↗
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+
+                        <!-- Active Clans List -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 font-mono text-xs tabular-nums">
+                            @foreach($clans ?? collect() as $clan)
+                                <div class="bg-[#0C1018] border border-white/10 p-4 flex items-center justify-between gap-3">
+                                    <div class="min-w-0">
+                                        <div class="flex items-center gap-2">
+                                            <span class="px-2 py-0.5 bg-[#121824] border border-[#E5C158]/40 text-[#E5C158] font-bold">[{{ $clan->tag }}]</span>
+                                            <strong class="text-[#F4F7FB] truncate">{{ $clan->name }}</strong>
+                                        </div>
+                                        <div class="mt-1.5 text-[11px] text-[#94A3B8]">
+                                            Fondateur : <span class="text-[#D8E5F8]">{{ $clan->owner?->gamertag ?? 'OP' }}</span>
+                                            · Effectif : <strong class="text-[#10B981]">{{ $clan->member_count }} opérateur(s)</strong>
+                                        </div>
+                                    </div>
+
+                                    <form action="/clans/{{ $clan->id }}/join" method="POST" data-join-clan="{{ $clan->id }}" class="shrink-0">
+                                        @csrf
+                                        <button
+                                            type="submit"
+                                            class="h-9 px-3 {{ $currentUser->clan_tag === $clan->tag ? 'bg-[#10B981]/20 border border-[#10B981]/50 text-[#10B981]' : 'bg-[#121824] border border-[#D8E5F8]/40 hover:border-[#E5C158] text-[#F4F7FB]' }} font-bold uppercase text-[11px] whitespace-nowrap cursor-pointer transition"
+                                        >
+                                            {{ $currentUser->clan_tag === $clan->tag ? 'Membre ✓' : 'Rejoindre l\'Escouade ↗' }}
+                                        </button>
+                                    </form>
+                                </div>
                             @endforeach
                         </div>
                     </div>

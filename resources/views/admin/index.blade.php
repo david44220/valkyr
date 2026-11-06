@@ -34,6 +34,11 @@
             'operators' => $operators,
             'tournaments' => $tournaments,
             'masterLedgerEntries' => $masterLedgerEntries,
+            'voucherCodes' => $voucherCodes ?? [],
+            'disputes' => $disputes ?? [],
+            'openDisputesCount' => $openDisputesCount ?? 0,
+            'wagerDuels' => $wagerDuels ?? [],
+            'clans' => $clans ?? [],
         ];
     @endphp
     <script>
@@ -80,6 +85,14 @@
                     class="h-10 px-3.5 bg-[#121824] border border-[#D8E5F8]/30 hover:border-[#D8E5F8] text-[#D8E5F8] font-mono text-xs font-semibold uppercase tracking-wider inline-flex items-center gap-1.5 rounded-none whitespace-nowrap transition"
                 >
                     <span>Mon Cockpit Membre ↗</span>
+                </a>
+
+                <a
+                    id="admin-export-csv-btn"
+                    href="/admin/export/ledger.csv"
+                    class="h-10 px-3.5 bg-[#10B981]/15 border border-[#10B981]/50 hover:bg-[#10B981] hover:text-[#030407] text-[#10B981] font-mono text-xs font-bold uppercase tracking-wider inline-flex items-center gap-1.5 rounded-none whitespace-nowrap transition"
+                >
+                    <span>EXPORTER GRAND LIVRE CERTIFIÉ (.CSV) ↓</span>
                 </a>
             </div>
 
@@ -331,6 +344,42 @@
                             </div>
                             <div class="text-[10px] text-[#64748B] mt-1">ABONDEMENTS INJECTÉS EN SÉQUESTRE</div>
                         </div>
+
+                        <!-- KPI 9 (v4): Armory Revenue -->
+                        <div class="bg-[#080B11] border border-[#E5C158]/30 p-5">
+                            <div class="text-[10px] uppercase tracking-widest text-[#E5C158]">FLUX V4 // BOUTIQUE ARMORY</div>
+                            <div id="kpi-admin-armory" class="text-2xl font-bold text-[#E5C158] mt-2">
+                                {{ \App\Models\Wallet::formatCents((int) ($revenueMetrics['armory_revenue_cents'] ?? 0)) }}
+                            </div>
+                            <div class="text-[10px] text-[#64748B] mt-1">ARMORY_REVENUE_CREDIT (BADGES &amp; BOUCLIERS)</div>
+                        </div>
+
+                        <!-- KPI 10 (v4): Clan Licenses Revenue -->
+                        <div class="bg-[#080B11] border border-[#D8E5F8]/30 p-5">
+                            <div class="text-[10px] uppercase tracking-widest text-[#D8E5F8]">FLUX V4 // FRANCHISES DE CLANS</div>
+                            <div id="kpi-admin-clans" class="text-2xl font-bold text-[#D8E5F8] mt-2">
+                                {{ \App\Models\Wallet::formatCents((int) ($revenueMetrics['clan_licenses_revenue_cents'] ?? 0)) }}
+                            </div>
+                            <div class="text-[10px] text-[#64748B] mt-1">CLAN_LICENSE_CREDIT (29,00 € PAR ROSTER)</div>
+                        </div>
+
+                        <!-- KPI 11 (v4): Wager Duels 1v1 Rake -->
+                        <div class="bg-[#080B11] border border-[#10B981]/30 p-5">
+                            <div class="text-[10px] uppercase tracking-widest text-[#10B981]">FLUX V4 // RAKE DUELS 1V1 (5%)</div>
+                            <div id="kpi-admin-duel-rake" class="text-2xl font-bold text-[#10B981] mt-2">
+                                {{ \App\Models\Wallet::formatCents((int) ($revenueMetrics['duel_rake_cents'] ?? 0)) }}
+                            </div>
+                            <div class="text-[10px] text-[#64748B] mt-1">COMMISSION 500 BPS SUR DUELS CLÔTURÉS</div>
+                        </div>
+
+                        <!-- KPI 12 (v4): Dispute Forfeits Revenue -->
+                        <div class="bg-[#080B11] border border-[#EF4444]/30 p-5">
+                            <div class="text-[10px] uppercase tracking-widest text-[#EF4444]">FLUX V4 // CAUTIONS LITIGES CONFISQUÉES</div>
+                            <div id="kpi-admin-dispute-forfeits" class="text-2xl font-bold text-[#F4F7FB] mt-2">
+                                {{ \App\Models\Wallet::formatCents((int) ($revenueMetrics['dispute_forfeits_revenue_cents'] ?? 0)) }}
+                            </div>
+                            <div class="text-[10px] text-[#64748B] mt-1">DISPUTE_FORFEIT_CREDIT (5,00 € PAR REJET)</div>
+                        </div>
                     </div>
 
                     <!-- Mathematical Double-Entry Ledger Integrity Monitor ($ledgerHealth) -->
@@ -374,6 +423,214 @@
                                     0,00 € (EXACT)
                                 </div>
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- =====================================================
+                         MODULE V4 — GÉNÉRATEUR DE CODES VOUCHERS PRÉPAYÉS (#admin-vouchers-panel)
+                         ===================================================== -->
+                    <div id="admin-vouchers-panel" class="bg-[#080B11] border border-[#E5C158]/40 p-6 space-y-6">
+                        <div class="flex flex-wrap items-center justify-between gap-4 border-b border-white/[0.08] pb-4">
+                            <div>
+                                <div class="text-[10px] font-mono uppercase tracking-[0.2em] text-[#E5C158]">
+                                    BRIQUE V4 #5 // CRÉDIT PRÉPAYÉ ATOMIQUE SUR WALLET (VOUCHER_CODE_CREDIT)
+                                </div>
+                                <h3 class="font-display font-bold text-xl text-[#F4F7FB] uppercase mt-0.5">
+                                    GÉNÉRATEUR DE CODES VOUCHERS &amp; CARTES CADEAUX ({{ isset($voucherCodes) ? $voucherCodes->count() : 0 }})
+                                </h3>
+                            </div>
+                            <span class="px-3 py-1 bg-[#121824] border border-[#E5C158]/40 text-[#E5C158] font-mono text-xs font-bold">
+                                ZERO FRAIS // CRÉDIT INSTANTANÉ
+                            </span>
+                        </div>
+
+                        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                            <!-- Formulaire de génération d'un nouveau Code Voucher -->
+                            <form
+                                id="form-admin-create-voucher"
+                                method="POST"
+                                action="/admin/vouchers"
+                                class="lg:col-span-5 bg-[#0C1018] border border-white/[0.08] p-5 space-y-4 font-mono text-xs"
+                            >
+                                @csrf
+                                <div class="text-[11px] font-bold uppercase tracking-wider text-[#E5C158] border-b border-white/[0.06] pb-2">
+                                    ÉMETTRE UN NOUVEAU CODE VOUCHER
+                                </div>
+
+                                <div>
+                                    <label for="admin-voucher-code" class="block text-[10px] uppercase tracking-wider text-[#94A3B8] mb-1">
+                                        CODE PROMO / VOUCHER (UNIQUE)
+                                    </label>
+                                    <input
+                                        id="admin-voucher-code"
+                                        type="text"
+                                        name="code"
+                                        required
+                                        minlength="3"
+                                        maxlength="40"
+                                        placeholder="Ex: VALKYR-APEX-250"
+                                        value="VALKYR-APEX-{{ random_int(100, 999) }}"
+                                        class="w-full h-11 bg-[#080B11] border border-white/15 px-3 text-xs text-[#F4F7FB] uppercase focus:border-[#E5C158] focus:outline-none"
+                                    >
+                                </div>
+
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div>
+                                        <label for="admin-voucher-amount" class="block text-[10px] uppercase tracking-wider text-[#94A3B8] mb-1">
+                                            MONTANT CRÉDITÉ (CENTIMES)
+                                        </label>
+                                        <select
+                                            id="admin-voucher-amount"
+                                            name="credit_amount_cents"
+                                            class="w-full h-11 bg-[#080B11] border border-white/15 px-3 text-xs text-[#E5C158] font-bold focus:border-[#E5C158] focus:outline-none tabular-nums"
+                                        >
+                                            <option value="2500">25,00 € (2500 cts)</option>
+                                            <option value="5000" selected>50,00 € (5000 cts)</option>
+                                            <option value="10000">100,00 € (10000 cts)</option>
+                                            <option value="25000">250,00 € (25000 cts)</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label for="admin-voucher-max-uses" class="block text-[10px] uppercase tracking-wider text-[#94A3B8] mb-1">
+                                            QUOTA MAX D'ACTIVATIONS
+                                        </label>
+                                        <input
+                                            id="admin-voucher-max-uses"
+                                            type="number"
+                                            name="max_uses"
+                                            required
+                                            min="1"
+                                            max="10000"
+                                            value="25"
+                                            class="w-full h-11 bg-[#080B11] border border-white/15 px-3 text-xs text-[#F4F7FB] focus:border-[#E5C158] focus:outline-none tabular-nums"
+                                        >
+                                    </div>
+                                </div>
+
+                                <button
+                                    type="submit"
+                                    id="btn-admin-create-voucher"
+                                    class="w-full h-12 bg-[#E5C158] text-[#030407] hover:bg-[#D8E5F8] font-mono text-xs font-bold uppercase tracking-wider rounded-none transition cursor-pointer"
+                                >
+                                    GÉNÉRER LE CODE VOUCHER PRÉPAYÉ ↗
+                                </button>
+                            </form>
+
+                            <!-- Tableau des Codes Vouchers émis -->
+                            <div class="lg:col-span-7 overflow-x-auto border border-white/[0.08] bg-[#0C1018]">
+                                <table class="w-full text-left border-collapse font-mono text-xs tabular-nums">
+                                    <thead>
+                                        <tr class="border-b border-white/10 bg-[#080B11] text-[10px] uppercase tracking-wider text-[#64748B] whitespace-nowrap">
+                                            <th class="px-3.5 py-3">CODE VOUCHER</th>
+                                            <th class="px-3.5 py-3 text-right">VALEUR FACIALE</th>
+                                            <th class="px-3.5 py-3 text-center">UTILISATIONS</th>
+                                            <th class="px-3.5 py-3 text-right">STATUT</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-white/[0.06]">
+                                        @forelse($voucherCodes ?? [] as $vCode)
+                                            <tr data-voucher-row="{{ $vCode->code }}" class="hover:bg-[#121824]/60 transition whitespace-nowrap">
+                                                <td class="px-3.5 py-3 font-bold text-[#E5C158]">{{ $vCode->code }}</td>
+                                                <td class="px-3.5 py-3 text-right font-bold text-[#10B981]">
+                                                    +{{ \App\Models\Wallet::formatCents((int) $vCode->credit_amount_cents) }}
+                                                </td>
+                                                <td class="px-3.5 py-3 text-center text-[#D8E5F8]">
+                                                    {{ $vCode->used_count }} / {{ $vCode->max_uses }}
+                                                </td>
+                                                <td class="px-3.5 py-3 text-right">
+                                                    <span class="px-2 py-0.5 text-[10px] font-bold border {{ ($vCode->is_active && $vCode->used_count < $vCode->max_uses) ? 'bg-[#10B981]/15 text-[#10B981] border-[#10B981]/40' : 'bg-white/5 text-[#64748B] border-white/10' }}">
+                                                        {{ ($vCode->is_active && $vCode->used_count < $vCode->max_uses) ? 'ACTIF' : 'ÉPUISÉ' }}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        @empty
+                                            <tr>
+                                                <td colspan="4" class="px-4 py-6 text-center text-[#94A3B8]">
+                                                    Aucun code Voucher configuré.
+                                                </td>
+                                            </tr>
+                                        @endforelse
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- =====================================================
+                         MODULE V4 — TRIBUNAL D'ARBITRAGE DES LITIGES (#admin-disputes-panel)
+                         ===================================================== -->
+                    <div id="admin-disputes-panel" class="bg-[#080B11] border border-[#EF4444]/40 p-6 space-y-5">
+                        <div class="flex flex-wrap items-center justify-between gap-4 border-b border-white/[0.08] pb-4">
+                            <div>
+                                <div class="text-[10px] font-mono uppercase tracking-[0.2em] text-[#EF4444]">
+                                    BRIQUE V4 #6 // TRIBUNAL D'ARBITRAGE &amp; CAUTION SÉQUESTRÉE (5,00 €)
+                                </div>
+                                <h3 class="font-display font-bold text-xl text-[#F4F7FB] uppercase mt-0.5">
+                                    TRIBUNAL DES LITIGES COMPÉTITIFS ({{ isset($disputes) ? $disputes->count() : 0 }})
+                                </h3>
+                            </div>
+                            <span class="px-3 py-1 bg-[#EF4444]/15 border border-[#EF4444]/40 text-[#EF4444] font-mono text-xs font-bold tabular-nums">
+                                {{ $openDisputesCount ?? 0 }} LITIGE(S) OPEN À TRANCHER
+                            </span>
+                        </div>
+
+                        <div class="space-y-3 font-mono text-xs tabular-nums">
+                            @forelse($disputes ?? [] as $disp)
+                                <div data-admin-dispute-card="{{ $disp->id }}" class="p-4 bg-[#0C1018] border {{ $disp->status === 'OPEN' ? 'border-[#EF4444]/50' : 'border-white/[0.08]' }} flex flex-col gap-3">
+                                    <div class="space-y-1.5 min-w-0">
+                                        <div class="flex flex-wrap items-center gap-2">
+                                            <span class="px-2 py-0.5 text-[10px] font-bold uppercase {{ $disp->status === 'OPEN' ? 'bg-[#EF4444]/20 text-[#EF4444] border border-[#EF4444]/40' : ($disp->status === 'UPHELD_REFUNDED' ? 'bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/40' : 'bg-[#E5C158]/20 text-[#E5C158] border border-[#E5C158]/40') }}">
+                                                {{ $disp->status }}
+                                            </span>
+                                            <span class="font-bold text-[#F4F7FB]">LITIGE #{{ $disp->id }}</span>
+                                            <span class="text-[#94A3B8]">— {{ $disp->challenger?->gamertag ?? 'OP #' . $disp->challenger_user_id }}</span>
+                                            <span class="text-[#D8E5F8]">sur « {{ $disp->tournament?->title ?? 'Tournoi #' . $disp->tournament_id }} »</span>
+                                            <span class="text-[#E5C158] font-bold">
+                                                [Caution : {{ \App\Models\Wallet::formatCents((int) $disp->bond_cents) }}]
+                                            </span>
+                                        </div>
+                                        <p class="text-[#94A3B8] text-xs">{{ $disp->reason }}</p>
+                                        @if($disp->evidence_url)
+                                            <div class="text-[11px] text-[#D8E5F8]">Preuve VOD : {{ $disp->evidence_url }}</div>
+                                        @endif
+                                        @if($disp->admin_resolution_notes)
+                                            <div class="text-[11px] text-[#10B981]">Verdict Admin : {{ $disp->admin_resolution_notes }}</div>
+                                        @endif
+                                    </div>
+
+                                    @if($disp->status === 'OPEN')
+                                        <div class="flex flex-wrap items-center gap-2 shrink-0">
+                                            <form method="POST" action="/admin/disputes/{{ $disp->id }}/resolve" data-admin-resolve-dispute="{{ $disp->id }}">
+                                                @csrf
+                                                <input type="hidden" name="decision" value="UPHELD">
+                                                <input type="hidden" name="notes" value="Réclamation validée par le Commandement : caution de 5,00 € remboursée.">
+                                                <button
+                                                    type="submit"
+                                                    class="h-9 px-3 bg-[#10B981] text-[#030407] hover:bg-[#D8E5F8] font-mono text-[11px] font-bold uppercase tracking-wider rounded-none whitespace-nowrap transition cursor-pointer"
+                                                >
+                                                    ✓ Valider (Rembourser 5,00 €)
+                                                </button>
+                                            </form>
+
+                                            <form method="POST" action="/admin/disputes/{{ $disp->id }}/resolve" data-admin-resolve-dispute="{{ $disp->id }}">
+                                                @csrf
+                                                <input type="hidden" name="decision" value="REJECTED">
+                                                <input type="hidden" name="notes" value="Litige infondé après vérification télémétrique : caution de 5,00 € confisquée au profit de SYS_TREASURY.">
+                                                <button
+                                                    type="submit"
+                                                    class="h-9 px-3 bg-[#EF4444]/15 border border-[#EF4444]/50 text-[#EF4444] hover:bg-[#EF4444] hover:text-[#030407] font-mono text-[11px] font-bold uppercase tracking-wider rounded-none whitespace-nowrap transition cursor-pointer"
+                                                >
+                                                    ✕ Rejeter (Confisquer 5,00 €)
+                                                </button>
+                                            </form>
+                                        </div>
+                                    @endif
+                                </div>
+                            @empty
+                                <div class="p-4 bg-[#0C1018] border border-white/[0.06] text-[#94A3B8]">
+                                    Aucun litige compétitif enregistré.
+                                </div>
+                            @endforelse
                         </div>
                     </div>
                 </section>

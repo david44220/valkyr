@@ -98,7 +98,13 @@ final class TournamentController extends Controller
             'thirdPlace',
             'ledgerEntries.actor',
             'ledgerEntries.wallet.user',
+            'predictions.user',
+            'predictions.predictedWinner',
+            'disputes.challenger',
+            'disputes.resolvedByAdmin',
         ]);
+
+        $predictionPoolCents = (int) $tournament->predictions->sum('stake_cents');
 
         // Calculate exact server-side integer math breakdown (Rake + Organizer RevShare + 60/30/10 Net Pool)
         $grossPoolCents = (int) $tournament->escrow_pool_cents;
@@ -139,6 +145,7 @@ final class TournamentController extends Controller
             'first_prize_cents' => $firstPrizeCents,
             'second_prize_cents' => $secondPrizeCents,
             'third_prize_cents' => $thirdPrizeCents,
+            'prediction_pool_cents' => $predictionPoolCents,
         ];
 
         // Build deterministic Bracket (Semi-Finals, 3rd Place Match, Grand Final)
@@ -253,6 +260,9 @@ final class TournamentController extends Controller
             'wallet' => $wallet,
             'myRegistration' => $myRegistration,
             'canManage' => $canManage,
+            'predictions' => $tournament->predictions,
+            'disputes' => $tournament->disputes,
+            'predictionPoolCents' => $predictionPoolCents,
         ]);
     }
 
@@ -480,6 +490,99 @@ final class TournamentController extends Controller
                 'ledger_entry' => $result['ledger_entry'],
                 'idempotent_replay' => $result['idempotent_replay'],
             ], 200);
+        }
+
+        return back()->with('status', $message);
+    }
+
+    /**
+     * Brick 3 — Place a Spectator Prediction Stake on a Tournament Participant (POST /tournaments/{tournament}/predict & /api/tournaments/{tournament}/predict)
+     */
+    public function predict(
+        Request $request,
+        Tournament $tournament,
+        EscrowLedgerService $ledgerService
+    ): JsonResponse|RedirectResponse {
+        /** @var User $spectator */
+        $spectator = $request->user();
+
+        $validated = $request->validate([
+            'predicted_winner_user_id' => ['required', 'integer', 'exists:users,id'],
+            'stake_cents' => [
+                'required',
+                function (string $attribute, mixed $value, Closure $fail): void {
+                    if (is_float($value) || is_bool($value) || ! preg_match('/^-?\d+$/', (string) $value)) {
+                        $fail('La mise du pronostic doit être exprimée en centimes entiers.');
+                    }
+                },
+                'integer',
+                'min:200',
+                'max:5000000',
+            ],
+            'idempotency_key' => ['required', 'string', 'min:4', 'max:140'],
+        ]);
+
+        $result = $ledgerService->placeTournamentPrediction(
+            user: $spectator,
+            tournament: $tournament,
+            predictedWinnerUserId: (int) $validated['predicted_winner_user_id'],
+            stakeCents: (int) $validated['stake_cents'],
+            idempotencyKey: (string) $validated['idempotency_key'],
+        );
+
+        $formatted = Wallet::formatCents((int) $validated['stake_cents']);
+        $message = $result['idempotent_replay']
+            ? 'Pronostic déjà verrouillé (réponse idempotente).'
+            : "Pronostic de {$formatted} verrouillé dans le pool spectateur sur {$result['prediction']->predictedWinner?->gamertag}.";
+
+        if ($request->is('api/*') || $request->expectsJson()) {
+            return response()->json([
+                'message' => $message,
+                'prediction' => $result['prediction'],
+                'wallet' => $result['wallet'],
+                'idempotent_replay' => $result['idempotent_replay'],
+            ], $result['idempotent_replay'] ? 200 : 201);
+        }
+
+        return back()->with('status', $message);
+    }
+
+    /**
+     * Brick 6 — Open a Tournament Dispute with 5,00 € Arbitration Bond (POST /tournaments/{tournament}/disputes & /api/tournaments/{tournament}/disputes)
+     */
+    public function openDispute(
+        Request $request,
+        Tournament $tournament,
+        EscrowLedgerService $ledgerService
+    ): JsonResponse|RedirectResponse {
+        /** @var User $challenger */
+        $challenger = $request->user();
+
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'min:5', 'max:500'],
+            'evidence_url' => ['nullable', 'string', 'max:255'],
+            'idempotency_key' => ['required', 'string', 'min:4', 'max:140'],
+        ]);
+
+        $result = $ledgerService->openTournamentDispute(
+            challenger: $challenger,
+            tournament: $tournament,
+            reason: (string) $validated['reason'],
+            evidenceUrl: isset($validated['evidence_url']) ? (string) $validated['evidence_url'] : null,
+            idempotencyKey: (string) $validated['idempotency_key'],
+        );
+
+        $message = $result['idempotent_replay']
+            ? 'Litige déjà soumis au Tribunal d\'Arbitrage (réponse idempotente).'
+            : 'Litige ouvert : caution d\'arbitrage de 5,00 € verrouillée dans SYS_ESCROW_VAULT.';
+
+        if ($request->is('api/*') || $request->expectsJson()) {
+            return response()->json([
+                'message' => $message,
+                'dispute' => $result['dispute'],
+                'wallet' => $result['wallet'],
+                'idempotent_replay' => $result['idempotent_replay'],
+            ], $result['idempotent_replay'] ? 200 : 201);
         }
 
         return back()->with('status', $message);

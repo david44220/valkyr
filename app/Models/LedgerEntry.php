@@ -71,6 +71,32 @@ class LedgerEntry extends Model
 
     public const string TYPE_SPONSOR_POOL_CREDIT = 'SPONSOR_POOL_CREDIT';
 
+    public const string TYPE_DUEL_ESCROW_DEBIT = 'DUEL_ESCROW_DEBIT';
+
+    public const string TYPE_DUEL_ESCROW_CREDIT = 'DUEL_ESCROW_CREDIT';
+
+    public const string TYPE_DUEL_PAYOUT_CREDIT = 'DUEL_PAYOUT_CREDIT';
+
+    public const string TYPE_ARMORY_PURCHASE_DEBIT = 'ARMORY_PURCHASE_DEBIT';
+
+    public const string TYPE_ARMORY_REVENUE_CREDIT = 'ARMORY_REVENUE_CREDIT';
+
+    public const string TYPE_PREDICTION_STAKE_DEBIT = 'PREDICTION_STAKE_DEBIT';
+
+    public const string TYPE_PREDICTION_STAKE_CREDIT = 'PREDICTION_STAKE_CREDIT';
+
+    public const string TYPE_PREDICTION_PAYOUT_CREDIT = 'PREDICTION_PAYOUT_CREDIT';
+
+    public const string TYPE_CLAN_LICENSE_DEBIT = 'CLAN_LICENSE_DEBIT';
+
+    public const string TYPE_CLAN_LICENSE_CREDIT = 'CLAN_LICENSE_CREDIT';
+
+    public const string TYPE_DISPUTE_BOND_DEBIT = 'DISPUTE_BOND_DEBIT';
+
+    public const string TYPE_DISPUTE_BOND_CREDIT = 'DISPUTE_BOND_CREDIT';
+
+    public const string TYPE_DISPUTE_FORFEIT_CREDIT = 'DISPUTE_FORFEIT_CREDIT';
+
     protected static function booted(): void
     {
         static::creating(function (LedgerEntry $entry): void {

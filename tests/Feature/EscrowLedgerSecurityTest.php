@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Models\ArmoryItem;
 use App\Models\LedgerEntry;
 use App\Models\PaymentRail;
 use App\Models\Tournament;
@@ -994,5 +995,354 @@ final class EscrowLedgerSecurityTest extends TestCase
         $sumAllWallets = (int) Wallet::sum('balance_cents');
 
         $this->assertSame($totalDeposits - $totalWithdrawals, $sumAllWallets);
+    }
+
+    public function test_v4_wager_duels_armory_store_and_clan_franchises(): void
+    {
+        $ledgerService = app(EscrowLedgerService::class);
+        $systemWallets = $ledgerService->ensureSystemWallets();
+        $ledgerService->ensureDefaultArmoryItems();
+
+        $challenger = User::factory()->player()->create(['elo_rating' => 2000]);
+        $opponent = User::factory()->player()->create(['elo_rating' => 2000]);
+        $outsider = User::factory()->player()->create(['elo_rating' => 1800]);
+
+        $ledgerService->deposit($challenger, 20000, 'v4-duel-dep-c1');
+        $ledgerService->deposit($opponent, 20000, 'v4-duel-dep-o1');
+        $ledgerService->deposit($outsider, 20000, 'v4-duel-dep-out1');
+
+        // 1. Brick 1 — Create 1v1 Wager Duel (stake = 5000 cents = 50,00 €)
+        $createDuelRes = $this->actingAs($challenger)->postJson('/api/duels', [
+            'game' => 'VALORANT // PROTOCOL',
+            'loadout_class' => 'VALKYRIE',
+            'stake_cents' => 5000,
+            'idempotency_key' => 'v4-duel-create-001',
+        ]);
+
+        $createDuelRes->assertCreated()
+            ->assertJsonPath('duel.status', 'OPEN')
+            ->assertJsonPath('duel.stake_cents', 5000)
+            ->assertJsonPath('duel.escrow_pot_cents', 5000)
+            ->assertJsonPath('wallet.balance_cents', 15000)
+            ->assertJsonPath('wallet.locked_escrow_cents', 5000);
+
+        $duelId = (int) $createDuelRes->json('duel.id');
+
+        // Challenger cannot accept own duel -> 422
+        $this->actingAs($challenger)->postJson("/api/duels/{$duelId}/accept", [
+            'idempotency_key' => 'v4-duel-self-accept',
+        ])->assertStatus(422);
+
+        // Opponent accepts duel -> pot becomes 10000 cents, status IN_PROGRESS
+        $acceptDuelRes = $this->actingAs($opponent)->postJson("/api/duels/{$duelId}/accept", [
+            'idempotency_key' => 'v4-duel-accept-001',
+        ]);
+
+        $acceptDuelRes->assertOk()
+            ->assertJsonPath('duel.status', 'IN_PROGRESS')
+            ->assertJsonPath('duel.escrow_pot_cents', 10000)
+            ->assertJsonPath('wallet.balance_cents', 15000)
+            ->assertJsonPath('wallet.locked_escrow_cents', 5000);
+
+        // Outsider (non-participant player) cannot settle duel -> 403 Forbidden
+        $this->actingAs($outsider)->postJson("/api/duels/{$duelId}/settle", [
+            'winner_user_id' => $challenger->id,
+            'idempotency_key' => 'v4-duel-outsider-settle',
+        ])->assertForbidden();
+
+        // Settle duel: 8% rake (800 cents) to SYS_TREASURY, 92% payout (9200 cents) to challenger
+        $settleDuelRes = $this->actingAs($challenger)->postJson("/api/duels/{$duelId}/settle", [
+            'winner_user_id' => $challenger->id,
+            'idempotency_key' => 'v4-duel-settle-001',
+        ]);
+
+        $settleDuelRes->assertOk()
+            ->assertJsonPath('duel.status', 'SETTLED')
+            ->assertJsonPath('duel.platform_rake_cents', 800)
+            ->assertJsonPath('duel.winner_payout_cents', 9200);
+
+        $this->assertSame(15000 + 9200, $challenger->wallet->fresh()->balance_cents);
+        $this->assertSame(0, $challenger->wallet->fresh()->locked_escrow_cents);
+        $this->assertSame(15000, $opponent->wallet->fresh()->balance_cents);
+        $this->assertSame(0, $opponent->wallet->fresh()->locked_escrow_cents);
+        $this->assertSame(800, $systemWallets['treasury']->fresh()->balance_cents);
+
+        // Idempotent replay on duel settlement returns 200 OK with idempotent_replay: true
+        $this->actingAs($challenger)->postJson("/api/duels/{$duelId}/settle", [
+            'winner_user_id' => $challenger->id,
+            'idempotency_key' => 'v4-duel-settle-001',
+        ])->assertOk()->assertJsonPath('idempotent_replay', true);
+
+        // 2. Brick 2 — Armory Store Purchase (100% revenue to SYS_TREASURY + equips badge + ELO bonus)
+        $armoryItem = ArmoryItem::where('sku', 'VKR-SHIELD-ELO-PRO')->firstOrFail(); // 1500 cents, +40 ELO
+        $eloBefore = $opponent->fresh()->elo_rating;
+
+        $buyRes = $this->actingAs($opponent)->postJson("/api/armory/{$armoryItem->id}/buy", [
+            'idempotency_key' => 'v4-armory-buy-001',
+        ]);
+
+        $buyRes->assertOk()
+            ->assertJsonPath('user.equipped_badge', $armoryItem->badge_label)
+            ->assertJsonPath('wallet.balance_cents', 15000 - 1500)
+            ->assertJsonPath('idempotent_replay', false);
+
+        $this->assertSame($eloBefore + $armoryItem->elo_bonus, $opponent->fresh()->elo_rating);
+        $this->assertSame(800 + 1500, $systemWallets['treasury']->fresh()->balance_cents);
+
+        // Idempotent replay with same key returns 200 OK without double-charging
+        $this->actingAs($opponent)->postJson("/api/armory/{$armoryItem->id}/buy", [
+            'idempotency_key' => 'v4-armory-buy-001',
+        ])->assertOk()->assertJsonPath('idempotent_replay', true);
+
+        // Anti-double-purchase: buying same Armory item with a new key is blocked (422) -> no ELO farming
+        $this->actingAs($opponent)->postJson("/api/armory/{$armoryItem->id}/buy", [
+            'idempotency_key' => 'v4-armory-buy-duplicate-exploit',
+        ])->assertStatus(422);
+        $this->assertSame($eloBefore + $armoryItem->elo_bonus, $opponent->fresh()->elo_rating);
+
+        // 3. Brick 4 — B2B Clan Franchise Creation (2900 cents = 29,00 € to SYS_TREASURY) & Join
+        $clanRes = $this->actingAs($challenger)->postJson('/api/clans', [
+            'tag' => 'TITAN',
+            'name' => 'TITAN SOVEREIGN LEGION',
+            'idempotency_key' => 'v4-clan-create-001',
+        ]);
+
+        $clanRes->assertCreated()
+            ->assertJsonPath('clan.tag', 'TITAN')
+            ->assertJsonPath('user.clan_tag', 'TITAN')
+            ->assertJsonPath('wallet.balance_cents', 24200 - 2900);
+
+        $this->assertSame(800 + 1500 + 2900, $systemWallets['treasury']->fresh()->balance_cents);
+
+        // Duplicate Clan tag is rejected (409 Conflict)
+        $this->actingAs($opponent)->postJson('/api/clans', [
+            'tag' => 'TITAN',
+            'name' => 'TITAN CLONE',
+            'idempotency_key' => 'v4-clan-duplicate-tag',
+        ])->assertStatus(409);
+
+        $clanId = (int) $clanRes->json('clan.id');
+        $joinRes = $this->actingAs($outsider)->postJson("/api/clans/{$clanId}/join");
+        $joinRes->assertOk()
+            ->assertJsonPath('clan.member_count', 2)
+            ->assertJsonPath('user.clan_tag', 'TITAN');
+
+        // Verify double-entry conservation across all wallets
+        foreach (Wallet::all() as $wallet) {
+            $this->assertTrue($ledgerService->verifyWalletLedgerInvariant($wallet));
+        }
+
+        $totalDeposits = (int) LedgerEntry::where('entry_type', LedgerEntry::TYPE_DEPOSIT)->sum('credit_cents');
+        $totalWithdrawals = (int) LedgerEntry::where('entry_type', LedgerEntry::TYPE_WITHDRAWAL)->sum('debit_cents');
+        $this->assertSame($totalDeposits - $totalWithdrawals, (int) Wallet::sum('balance_cents'));
+    }
+
+    public function test_v4_spectator_predictions_voucher_codes_dispute_arbitration_and_csv_export(): void
+    {
+        $ledgerService = app(EscrowLedgerService::class);
+        $systemWallets = $ledgerService->ensureSystemWallets();
+
+        $admin = User::factory()->admin()->create();
+        $organizer = User::factory()->organizer()->create();
+        $p1 = User::factory()->player()->create();
+        $p2 = User::factory()->player()->create();
+        $p3 = User::factory()->player()->create();
+        $spectatorWin = User::factory()->player()->create();
+        $spectatorLose = User::factory()->player()->create();
+
+        $ledgerService->deposit($p1, 15000, 'v4-pred-dep-p1');
+        $ledgerService->deposit($p2, 15000, 'v4-pred-dep-p2');
+        $ledgerService->deposit($p3, 15000, 'v4-pred-dep-p3');
+        $ledgerService->deposit($spectatorWin, 10000, '=cmd|calc!v4-pred-dep-sw');
+        $ledgerService->deposit($spectatorLose, 10000, 'v4-pred-dep-sl');
+
+        // 1. Brick 5 — RBAC on Voucher Creation (403 for PLAYER & ORGANIZER) + Admin creates Voucher Code & Player redeems it
+        $this->actingAs($p1)->postJson('/api/admin/vouchers', [
+            'code' => 'HACKED-VOUCHER',
+            'credit_amount_cents' => 50000,
+            'max_uses' => 10,
+        ])->assertForbidden();
+
+        $this->actingAs($organizer)->postJson('/api/admin/vouchers', [
+            'code' => 'ORG-VOUCHER',
+            'credit_amount_cents' => 5000,
+            'max_uses' => 10,
+        ])->assertForbidden();
+
+        $voucherCreateRes = $this->actingAs($admin)->postJson('/api/admin/vouchers', [
+            'code' => 'VALKYR-BONUS-25',
+            'credit_amount_cents' => 2500,
+            'max_uses' => 5,
+        ])->assertCreated();
+
+        $this->assertSame('VALKYR-BONUS-25', $voucherCreateRes->json('voucher.code'));
+
+        $redeemRes = $this->actingAs($spectatorWin)->postJson('/api/wallets/redeem-voucher', [
+            'code' => 'valkyr-bonus-25',
+            'idempotency_key' => 'v4-voucher-redeem-sw-01',
+        ]);
+
+        $redeemRes->assertOk()
+            ->assertJsonPath('wallet.balance_cents', 12500)
+            ->assertJsonPath('redemption.credited_cents', 2500);
+
+        // Using same voucher a second time with a different key is blocked -> 422
+        $this->actingAs($spectatorWin)->postJson('/api/wallets/redeem-voucher', [
+            'code' => 'VALKYR-BONUS-25',
+            'idempotency_key' => 'v4-voucher-redeem-sw-duplicate',
+        ])->assertStatus(422);
+
+        // 2. Brick 3 — Spectator Predictions on Tournament + Pro-Rata Settlement
+        $tournament = Tournament::create([
+            'organizer_id' => $organizer->id,
+            'slug' => 'prediction-dispute-test-arena',
+            'title' => 'PREDICTION & DISPUTE TEST ARENA',
+            'game' => 'COUNTER-STRIKE 2',
+            'format' => '5v5',
+            'status' => Tournament::STATUS_OPEN,
+            'entry_fee_cents' => 5000,
+            'escrow_pool_cents' => 0,
+            'sponsored_guarantee_cents' => 0,
+            'rake_bps' => 800,
+            'organizer_share_bps' => 200,
+            'platform_rake_cents' => 0,
+            'organizer_rake_cents' => 0,
+            'net_prize_pool_cents' => 0,
+            'max_participants' => 8,
+            'registered_count' => 0,
+        ]);
+
+        $ledgerService->registerForTournament($p1, $tournament, 'v4-reg-p1');
+        $ledgerService->registerForTournament($p2, $tournament, 'v4-reg-p2');
+        $ledgerService->registerForTournament($p3, $tournament, 'v4-reg-p3');
+
+        // Spectator 1 stakes 3000 cents on P1; Spectator 2 stakes 1000 cents on P2 (total prediction pool = 4000 cents)
+        $this->actingAs($spectatorWin)->postJson("/api/tournaments/{$tournament->id}/predict", [
+            'predicted_winner_user_id' => $p1->id,
+            'stake_cents' => 3000,
+            'idempotency_key' => 'v4-pred-sw-01',
+        ])->assertCreated()
+            ->assertJsonPath('wallet.balance_cents', 9500);
+
+        $this->actingAs($spectatorLose)->postJson("/api/tournaments/{$tournament->id}/predict", [
+            'predicted_winner_user_id' => $p2->id,
+            'stake_cents' => 1000,
+            'idempotency_key' => 'v4-pred-sl-01',
+        ])->assertCreated()
+            ->assertJsonPath('wallet.balance_cents', 9000);
+
+        // 3. Brick 6 — Open 2 Tournament Disputes (500 cents bond each)
+        $disputeUpheldRes = $this->actingAs($p1)->postJson("/api/tournaments/{$tournament->id}/disputes", [
+            'reason' => 'Vérification officielle démo serveur Alpha.',
+            'idempotency_key' => 'v4-dispute-p1-upheld',
+        ])->assertCreated();
+        $disputeUpheldId = (int) $disputeUpheldRes->json('dispute.id');
+
+        $disputeRejectedRes = $this->actingAs($p2)->postJson("/api/tournaments/{$tournament->id}/disputes", [
+            'reason' => 'Réclamation infondée sans preuve.',
+            'idempotency_key' => 'v4-dispute-p2-rejected',
+        ])->assertCreated();
+        $disputeRejectedId = (int) $disputeRejectedRes->json('dispute.id');
+
+        // Settle tournament: P1 wins 1st place -> Spectator 1 wins 90% of 4000 prediction pool = 3600 cents (+400 cents rake to Treasury)
+        $settleRes = $this->actingAs($organizer)->postJson("/api/tournaments/{$tournament->id}/settle", [
+            'first_place_user_id' => $p1->id,
+            'second_place_user_id' => $p2->id,
+            'third_place_user_id' => $p3->id,
+            'idempotency_key' => 'v4-settle-with-predictions',
+        ]);
+
+        $settleRes->assertOk()
+            ->assertJsonPath('breakdown.prediction_pool_cents', 4000)
+            ->assertJsonPath('breakdown.prediction_rake_cents', 400);
+
+        // SpectatorWin had 9500 + 3600 prediction payout = 13100 cents!
+        $this->assertSame(13100, $spectatorWin->wallet->fresh()->balance_cents);
+        $this->assertSame(9000, $spectatorLose->wallet->fresh()->balance_cents);
+
+        // Non-admin (PLAYER & ORGANIZER) cannot resolve disputes -> 403 Forbidden
+        $this->actingAs($p1)->postJson("/api/admin/disputes/{$disputeUpheldId}/resolve", [
+            'decision' => 'UPHELD',
+        ])->assertForbidden();
+        $this->actingAs($organizer)->postJson("/api/admin/disputes/{$disputeUpheldId}/resolve", [
+            'decision' => 'UPHELD',
+        ])->assertForbidden();
+
+        // Admin resolves Dispute #1 as UPHELD (refunds 500 cents to P1) and Dispute #2 as REJECTED (500 cents to SYS_TREASURY)
+        $p1BeforeResolve = $p1->wallet->fresh()->balance_cents;
+        $this->actingAs($admin)->postJson("/api/admin/disputes/{$disputeUpheldId}/resolve", [
+            'decision' => 'UPHELD',
+            'notes' => 'Preuve télémétrique validée : remboursement caution.',
+        ])->assertOk()
+            ->assertJsonPath('dispute.status', 'UPHELD_REFUNDED');
+        $this->assertSame($p1BeforeResolve + 500, $p1->wallet->fresh()->balance_cents);
+
+        $treasuryBeforeForfeit = $systemWallets['treasury']->fresh()->balance_cents;
+        $this->actingAs($admin)->postJson("/api/admin/disputes/{$disputeRejectedId}/resolve", [
+            'decision' => 'REJECTED',
+            'notes' => 'Litige abusif : caution confisquée au profit de SYS_TREASURY.',
+        ])->assertOk()
+            ->assertJsonPath('dispute.status', 'REJECTED_FORFEITED');
+        $this->assertSame($treasuryBeforeForfeit + 500, $systemWallets['treasury']->fresh()->balance_cents);
+        $this->assertSame(0, $systemWallets['escrow']->fresh()->balance_cents);
+
+        // Also verify 100% refund of Spectator Predictions when a Tournament is CANCELLED
+        $cancelledArena = Tournament::create([
+            'organizer_id' => $organizer->id,
+            'slug' => 'cancelled-prediction-arena',
+            'title' => 'CANCELLED PREDICTION ARENA',
+            'game' => 'VALORANT',
+            'format' => '5v5',
+            'status' => Tournament::STATUS_OPEN,
+            'entry_fee_cents' => 2000,
+            'escrow_pool_cents' => 0,
+            'sponsored_guarantee_cents' => 0,
+            'rake_bps' => 1000,
+            'organizer_share_bps' => 0,
+            'platform_rake_cents' => 0,
+            'organizer_rake_cents' => 0,
+            'net_prize_pool_cents' => 0,
+            'max_participants' => 8,
+            'registered_count' => 0,
+        ]);
+        $ledgerService->registerForTournament($p2, $cancelledArena, 'v4-cancel-reg-p2');
+        $swBeforeCancel = $spectatorWin->wallet->fresh()->balance_cents;
+        $this->actingAs($spectatorWin)->postJson("/api/tournaments/{$cancelledArena->id}/predict", [
+            'predicted_winner_user_id' => $p2->id,
+            'stake_cents' => 1500,
+            'idempotency_key' => 'v4-cancel-pred-sw',
+        ])->assertCreated();
+        $this->assertSame($swBeforeCancel - 1500, $spectatorWin->wallet->fresh()->balance_cents);
+        $this->assertSame(1500, $spectatorWin->wallet->fresh()->locked_escrow_cents);
+
+        $this->actingAs($organizer)->postJson("/api/tournaments/{$cancelledArena->id}/cancel", [
+            'idempotency_key' => 'v4-cancel-arena-with-pred',
+            'reason' => 'Annulation test remboursement 100 % pronostics.',
+        ])->assertOk();
+
+        $this->assertSame($swBeforeCancel, $spectatorWin->wallet->fresh()->balance_cents);
+        $this->assertSame(0, $spectatorWin->wallet->fresh()->locked_escrow_cents);
+        $this->assertSame(0, $systemWallets['escrow']->fresh()->balance_cents);
+
+        // 4. Brick 7 — Certified CSV Ledger Export in /admin (RBAC + CSV Formula Injection Protection)
+        $this->actingAs($p1)->get('/api/admin/export/ledger.csv')->assertForbidden();
+        $this->actingAs($organizer)->get('/api/admin/export/ledger.csv')->assertForbidden();
+
+        $csvRes = $this->actingAs($admin)->get('/api/admin/export/ledger.csv');
+        $csvRes->assertOk()
+            ->assertHeader('Content-Type', 'text/csv; charset=UTF-8');
+        $csvContent = (string) $csvRes->getContent();
+        $this->assertStringContainsString('id,created_at,wallet_id,operator_gamertag,entry_type', $csvContent);
+        // Verify formula-prefixed idempotency_key (=cmd|...) is neutralized with leading single quote ('=cmd|...)
+        $this->assertStringContainsString("\"'=cmd|calc!v4-pred-dep-sw\"", $csvContent);
+
+        // Global conservation check across all wallets
+        foreach (Wallet::all() as $wallet) {
+            $this->assertTrue($ledgerService->verifyWalletLedgerInvariant($wallet));
+        }
+
+        $totalDeposits = (int) LedgerEntry::where('entry_type', LedgerEntry::TYPE_DEPOSIT)->sum('credit_cents');
+        $totalWithdrawals = (int) LedgerEntry::where('entry_type', LedgerEntry::TYPE_WITHDRAWAL)->sum('debit_cents');
+        $this->assertSame($totalDeposits - $totalWithdrawals, (int) Wallet::sum('balance_cents'));
     }
 }

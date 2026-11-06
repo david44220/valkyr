@@ -67,6 +67,28 @@ Route::middleware(['auth', 'throttle:financial'])->group(function (): void {
     Route::post('/wallets/subscribe-prime', [WalletController::class, 'subscribePrime'])->name('wallets.subscribe-prime');
     Route::post('/api/wallets/subscribe-prime', [WalletController::class, 'subscribePrime'])->name('api.wallets.subscribe-prime');
 
+    // v4 Brick 5 — Voucher Code Redemption (100% Wallet Credit)
+    Route::post('/wallets/redeem-voucher', [WalletController::class, 'redeemVoucher'])->name('wallets.redeem-voucher');
+    Route::post('/api/wallets/redeem-voucher', [WalletController::class, 'redeemVoucher'])->name('api.wallets.redeem-voucher');
+
+    // v4 Brick 1 — Instant 1v1 Cash-Match Wager Duels
+    Route::post('/duels', [ArenaController::class, 'storeDuel'])->name('duels.store');
+    Route::post('/api/duels', [ArenaController::class, 'storeDuel'])->name('api.duels.store');
+    Route::post('/duels/{duel}/accept', [ArenaController::class, 'acceptDuel'])->name('duels.accept');
+    Route::post('/api/duels/{duel}/accept', [ArenaController::class, 'acceptDuel'])->name('api.duels.accept');
+    Route::post('/duels/{duel}/settle', [ArenaController::class, 'settleDuel'])->name('duels.settle');
+    Route::post('/api/duels/{duel}/settle', [ArenaController::class, 'settleDuel'])->name('api.duels.settle');
+
+    // v4 Brick 2 — Sovereign Armory Store & Tactical Badges
+    Route::post('/armory/{armoryItem}/buy', [ArenaController::class, 'buyArmoryItem'])->name('armory.buy');
+    Route::post('/api/armory/{armoryItem}/buy', [ArenaController::class, 'buyArmoryItem'])->name('api.armory.buy');
+
+    // v4 Brick 4 — B2B Clan Franchises (29,00 € License & Squad Membership)
+    Route::post('/clans', [ArenaController::class, 'storeClan'])->name('clans.store');
+    Route::post('/api/clans', [ArenaController::class, 'storeClan'])->name('api.clans.store');
+    Route::post('/clans/{clan}/join', [ArenaController::class, 'joinClan'])->name('clans.join');
+    Route::post('/api/clans/{clan}/join', [ArenaController::class, 'joinClan'])->name('api.clans.join');
+
     // Saved Operator Payment Methods (IBAN / EVM Address / OTC Account)
     Route::post('/payment-methods', [WalletController::class, 'storePaymentMethod'])->name('payment-methods.store');
     Route::post('/api/payment-methods', [WalletController::class, 'storePaymentMethod'])->name('api.payment-methods.store');
@@ -82,7 +104,7 @@ Route::middleware(['auth', 'throttle:financial'])->group(function (): void {
     Route::post('/tournaments/{tournament}/register', [TournamentController::class, 'register'])->name('tournaments.register');
     Route::post('/api/tournaments/{tournament}/register', [TournamentController::class, 'register'])->name('api.tournaments.register');
 
-    // Official Tournament Settlement (Rake + Organizer RevShare + 60/30/10 Distribution)
+    // Official Tournament Settlement (Rake + Organizer RevShare + 60/30/10 Distribution + Spectator Prediction Pool)
     Route::post('/tournaments/{tournament}/settle', [TournamentController::class, 'settle'])->name('tournaments.settle');
     Route::post('/api/tournaments/{tournament}/settle', [TournamentController::class, 'settle'])->name('api.tournaments.settle');
 
@@ -97,7 +119,24 @@ Route::middleware(['auth', 'throttle:financial'])->group(function (): void {
     Route::post('/tournaments/{tournament}/sponsor', [TournamentController::class, 'sponsor'])->name('tournaments.sponsor');
     Route::post('/api/tournaments/{tournament}/sponsor', [TournamentController::class, 'sponsor'])->name('api.tournaments.sponsor');
 
+    // v4 Brick 3 — Spectator Prediction Pool (10% Rake + 90% Pro-Rata Winner Pool)
+    Route::post('/tournaments/{tournament}/predict', [TournamentController::class, 'predict'])->name('tournaments.predict');
+    Route::post('/api/tournaments/{tournament}/predict', [TournamentController::class, 'predict'])->name('api.tournaments.predict');
+
+    // v4 Brick 6 — Tournament Dispute Center with 5,00 € Arbitration Bond
+    Route::post('/tournaments/{tournament}/disputes', [TournamentController::class, 'openDispute'])->name('tournaments.disputes.store');
+    Route::post('/api/tournaments/{tournament}/disputes', [TournamentController::class, 'openDispute'])->name('api.tournaments.disputes.store');
+
     // Page 5 — Sovereign Admin Back-Office Action Endpoints (ADMIN only)
+    Route::get('/admin/export/ledger.csv', [AdminController::class, 'exportLedgerCsv'])->name('admin.export.ledger-csv');
+    Route::get('/api/admin/export/ledger.csv', [AdminController::class, 'exportLedgerCsv'])->name('api.admin.export.ledger-csv');
+
+    Route::post('/admin/vouchers', [AdminController::class, 'storeVoucher'])->name('admin.vouchers.store');
+    Route::post('/api/admin/vouchers', [AdminController::class, 'storeVoucher'])->name('api.admin.vouchers.store');
+
+    Route::post('/admin/disputes/{dispute}/resolve', [AdminController::class, 'resolveDispute'])->name('admin.disputes.resolve');
+    Route::post('/api/admin/disputes/{dispute}/resolve', [AdminController::class, 'resolveDispute'])->name('api.admin.disputes.resolve');
+
     Route::post('/admin/payment-rails', [AdminController::class, 'storePaymentRail'])->name('admin.payment-rails.store');
     Route::post('/api/admin/payment-rails', [AdminController::class, 'storePaymentRail'])->name('api.admin.payment-rails.store');
 

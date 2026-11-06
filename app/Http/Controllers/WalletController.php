@@ -231,4 +231,39 @@ final class WalletController extends Controller
 
         return back()->with('status', "Moyen de paiement « {$label} » supprimé.");
     }
+
+    public function redeemVoucher(Request $request, EscrowLedgerService $ledgerService): JsonResponse|RedirectResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'code' => ['required', 'string', 'min:3', 'max:40'],
+            'idempotency_key' => ['required', 'string', 'min:4', 'max:140'],
+        ]);
+
+        $result = $ledgerService->redeemVoucher(
+            user: $user,
+            code: (string) $validated['code'],
+            idempotencyKey: (string) $validated['idempotency_key'],
+        );
+
+        $formatted = Wallet::formatCents((int) $result['redemption']->credited_cents);
+        $message = $result['idempotent_replay']
+            ? "Code Voucher « {$result['voucher']->code} » déjà crédité (réponse idempotente)."
+            : "Code Voucher « {$result['voucher']->code} » activé : +{$formatted} crédités sur votre Wallet.";
+
+        if ($request->is('api/*') || $request->expectsJson()) {
+            return response()->json([
+                'message' => $message,
+                'voucher' => $result['voucher'],
+                'redemption' => $result['redemption'],
+                'wallet' => $result['wallet'],
+                'ledger_entry' => $result['ledger_entry'],
+                'idempotent_replay' => $result['idempotent_replay'],
+            ], 200);
+        }
+
+        return back()->with('status', $message);
+    }
 }
